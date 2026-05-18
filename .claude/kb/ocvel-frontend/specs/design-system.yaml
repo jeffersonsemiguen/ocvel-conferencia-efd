@@ -1,0 +1,299 @@
+schema_version: "1.0"
+domain: ocvel-frontend
+file_type: design-system-tokens
+last_validated: "2026-05-05"
+source: "src/index.css — OCVEL design system CSS custom properties"
+
+meta:
+  description: "Complete design token specification for OCVEL frontend. All values are CSS custom properties resolved at runtime."
+  tailwind_version: "4"
+  theme_mechanism: "@theme inline"
+  dark_mode_mechanism: "@custom-variant dark (&:is(.dark *))"
+  dark_mode_class: ".dark"
+  dark_mode_target: "document.documentElement (html element)"
+  base_font: "Inter"
+
+colors:
+  # Each token listed with light and dark values
+  background:
+    token: "--background"
+    tailwind_class: "bg-background"
+    light: "oklch(0.9791 0 0)"
+    dark: "oklch(0.1398 0 0)"
+    hex_approx_light: "#f9f9f8"
+    hex_approx_dark: "#1c1c1c"
+    role: "Page background"
+
+  foreground:
+    token: "--foreground"
+    tailwind_class: "text-foreground"
+    light: "oklch(0.2178 0 0)"
+    dark: "oklch(0.9850 0.0041 91.4457)"
+    role: "Primary text"
+
+  card:
+    token: "--card"
+    tailwind_class: "bg-card"
+    light: "oklch(1.0000 0 0)"
+    dark: "oklch(0.1822 0 0)"
+    role: "Card surface"
+
+  card_foreground:
+    token: "--card-foreground"
+    tailwind_class: "text-card-foreground"
+    light: "oklch(0.2393 0 0)"
+    dark: "oklch(0.9850 0.0041 91.4457)"
+    role: "Card text"
+
+  popover:
+    token: "--popover"
+    tailwind_class: "bg-popover"
+    light: "oklch(1.0000 0 0)"
+    dark: "oklch(0.1822 0 0)"
+    role: "Popover/dropdown surface"
+
+  popover_foreground:
+    token: "--popover-foreground"
+    tailwind_class: "text-popover-foreground"
+    light: "oklch(0.2393 0 0)"
+    dark: "oklch(0.9850 0.0041 91.4457)"
+    role: "Popover text"
+
+  primary:
+    token: "--primary"
+    tailwind_class: "bg-primary / text-primary"
+    light: "oklch(0.8893 0.1777 95.2779)"
+    dark: "oklch(0.8893 0.1777 95.2779)"
+    hex_approx: "#f0c93a"
+    role: "Brand color — warm yellow/amber. Same in both modes."
+    note: "Brand color is constant — does not change between light and dark"
+
+  primary_foreground:
+    token: "--primary-foreground"
+    tailwind_class: "text-primary-foreground"
+    light: "oklch(0.2178 0 0)"
+    dark: "oklch(0.1398 0 0)"
+    role: "Text on primary background"
+
+  secondary:
+    token: "--secondary"
+    tailwind_class: "bg-secondary"
+    light: "oklch(0.9612 0 0)"
+    dark: "oklch(0.2221 0 0)"
+    role: "Secondary surface"
+
+  secondary_foreground:
+    token: "--secondary-foreground"
+    tailwind_class: "text-secondary-foreground"
+    light: "oklch(0.2178 0 0)"
+    dark: "oklch(0.9851 0 0)"
+    role: "Text on secondary"
+
+  muted:
+    token: "--muted"
+    tailwind_class: "bg-muted"
+    light: "oklch(0.9401 0 0)"
+    dark: "oklch(0.2221 0 0)"
+    role: "Muted/subdued surface"
+
+  muted_foreground:
+    token: "--muted-foreground"
+    tailwind_class: "text-muted-foreground"
+    light: "oklch(0.4640 0 0)"
+    dark: "oklch(0.6830 0 0)"
+    role: "Subdued text, captions, placeholders"
+
+  accent:
+    token: "--accent"
+    tailwind_class: "bg-accent"
+    light: "oklch(0.9617 0.0592 95.8853)"
+    dark: "oklch(0.2221 0 0)"
+    role: "Accent — light amber tint in light mode, dark surface in dark mode"
+
+  accent_foreground:
+    token: "--accent-foreground"
+    tailwind_class: "text-accent-foreground"
+    light: "oklch(0.2178 0 0)"
+    dark: "oklch(0.9851 0 0)"
+    role: "Text on accent"
+
+  destructive:
+    token: "--destructive"
+    tailwind_class: "bg-destructive"
+    light: "oklch(0.5433 0.1740 29.6967)"
+    dark: "oklch(0.5433 0.1740 29.6967)"
+    hex_approx: "#c0392b"
+    role: "Error/danger/delete actions. Same in both modes."
+
+  destructive_foreground:
+    token: "--destructive-foreground"
+    tailwind_class: "text-destructive-foreground"
+    light: "oklch(1.0000 0 0)"
+    dark: "oklch(1.0000 0 0)"
+    role: "Text on destructive — white in both modes"
+
+  border:
+    token: "--border"
+    tailwind_class: "border-border"
+    light: "oklch(0.9006 0 0)"
+    dark: "oklch(0.2520 0 0)"
+    role: "Default border color"
+
+  input:
+    token: "--input"
+    tailwind_class: "border-input"
+    light: "oklch(0.9006 0 0)"
+    dark: "oklch(0.2520 0 0)"
+    role: "Input field border"
+
+  ring:
+    token: "--ring"
+    tailwind_class: "ring-ring / outline-ring"
+    light: "oklch(0.8893 0.1777 95.2779)"
+    dark: "oklch(0.8893 0.1777 95.2779)"
+    role: "Focus ring — brand yellow in both modes"
+
+chart_colors:
+  chart_1:
+    token: "--chart-1"
+    light: "oklch(0.8893 0.1777 95.2779)"
+    dark: "oklch(0.8893 0.1777 95.2779)"
+    hue_family: "Yellow/amber (brand)"
+  chart_2:
+    token: "--chart-2"
+    light: "oklch(0.4490 0.0405 250.0452)"
+    dark: "oklch(0.5799 0.0496 249.6959)"
+    hue_family: "Blue"
+  chart_3:
+    token: "--chart-3"
+    light: "oklch(0.4999 0.0802 180.1312)"
+    dark: "oklch(0.6001 0.0802 180.0405)"
+    hue_family: "Teal/cyan"
+  chart_4:
+    token: "--chart-4"
+    light: "oklch(0.8494 0.0104 58.1918)"
+    dark: "oklch(0.8494 0.0104 58.1918)"
+    hue_family: "Warm gray/gold"
+  chart_5:
+    token: "--chart-5"
+    light: "oklch(0.6001 0.0492 249.6616)"
+    dark: "oklch(0.6990 0.0505 250.4634)"
+    hue_family: "Blue (lighter)"
+
+sidebar_colors:
+  sidebar:
+    token: "--sidebar"
+    light: "oklch(0.9791 0 0)"
+    dark: "oklch(0.1398 0 0)"
+  sidebar_foreground:
+    token: "--sidebar-foreground"
+    light: "oklch(0.2178 0 0)"
+    dark: "oklch(0.8514 0 0)"
+  sidebar_primary:
+    token: "--sidebar-primary"
+    light: "oklch(0.8893 0.1777 95.2779)"
+    dark: "oklch(0.8893 0.1777 95.2779)"
+  sidebar_primary_foreground:
+    token: "--sidebar-primary-foreground"
+    light: "oklch(0.2178 0 0)"
+    dark: "oklch(0.1398 0 0)"
+  sidebar_accent:
+    token: "--sidebar-accent"
+    light: "oklch(0.9766 0.0410 96.5830)"
+    dark: "oklch(0.2002 0 0)"
+  sidebar_accent_foreground:
+    token: "--sidebar-accent-foreground"
+    light: "oklch(0.2178 0 0)"
+    dark: "oklch(0.8893 0.1777 95.2779)"
+    note: "In dark mode, active sidebar items show brand yellow text"
+  sidebar_border:
+    token: "--sidebar-border"
+    light: "oklch(0.9006 0 0)"
+    dark: "oklch(0.2520 0 0)"
+  sidebar_ring:
+    token: "--sidebar-ring"
+    light: "oklch(0.8893 0.1777 95.2779)"
+    dark: "oklch(0.8893 0.1777 95.2779)"
+
+typography:
+  font_sans:
+    token: "--font-sans"
+    value: "Inter, sans-serif"
+    usage: "Body text, UI labels, buttons"
+  font_serif:
+    token: "--font-serif"
+    value: "Inter, serif"
+    usage: "Headings (same family as sans in OCVEL)"
+  font_mono:
+    token: "--font-mono"
+    value: "Inter, ui-sans-serif, sans-serif, system-ui"
+    usage: "Code blocks, monospaced content"
+  tracking_normal:
+    token: "--tracking-normal"
+    value: "0em"
+    usage: "Default letter spacing"
+
+radius:
+  base:
+    token: "--radius"
+    value: "1.4rem"
+    note: "Very rounded — pill-like aesthetic"
+  sm:
+    token: "--radius-sm"
+    computed: "calc(var(--radius) - 4px)"
+    approx: "1.15rem"
+    tailwind: "rounded-sm"
+  md:
+    token: "--radius-md"
+    computed: "calc(var(--radius) - 2px)"
+    approx: "1.3rem"
+    tailwind: "rounded-md"
+  lg:
+    token: "--radius-lg"
+    computed: "var(--radius)"
+    value: "1.4rem"
+    tailwind: "rounded-lg"
+  xl:
+    token: "--radius-xl"
+    computed: "calc(var(--radius) + 4px)"
+    approx: "1.65rem"
+    tailwind: "rounded-xl"
+
+spacing:
+  base:
+    token: "--spacing"
+    value: "0.25rem"
+    note: "1 spacing unit = 4px. Tailwind spacing scale multiplies this."
+
+shadows:
+  note: "All shadows use extremely low opacity (0.01–0.03) — near-flat design aesthetic"
+  color: "#000000"
+  opacity_default: 0.01
+  opacity_2xl: 0.03
+  params:
+    x: "0px"
+    y: "2px"
+    blur: "12px"
+    spread: "0px"
+  tokens:
+    shadow_2xs: "0px 2px 12px 0px hsl(0 0% 0% / 0.01)"
+    shadow_xs: "0px 2px 12px 0px hsl(0 0% 0% / 0.01)"
+    shadow_sm: "0px 2px 12px 0px hsl(0 0% 0% / 0.01), 0px 1px 2px -1px hsl(0 0% 0% / 0.01)"
+    shadow: "0px 2px 12px 0px hsl(0 0% 0% / 0.01), 0px 1px 2px -1px hsl(0 0% 0% / 0.01)"
+    shadow_md: "0px 2px 12px 0px hsl(0 0% 0% / 0.01), 0px 2px 4px -1px hsl(0 0% 0% / 0.01)"
+    shadow_lg: "0px 2px 12px 0px hsl(0 0% 0% / 0.01), 0px 4px 6px -1px hsl(0 0% 0% / 0.01)"
+    shadow_xl: "0px 2px 12px 0px hsl(0 0% 0% / 0.01), 0px 8px 10px -1px hsl(0 0% 0% / 0.01)"
+    shadow_2xl: "0px 2px 12px 0px hsl(0 0% 0% / 0.03)"
+
+theme_inline_mapping:
+  description: "@theme inline bridges CSS vars to Tailwind utility classes"
+  pattern: "--color-{name}: var(--{name})"
+  radius_pattern: "--radius-{size}: calc(var(--radius) ± Npx)"
+  font_pattern: "--font-{stack}: var(--font-{stack})"
+  shadow_pattern: "--shadow-{size}: var(--shadow-{size})"
+
+base_layer:
+  global_border: "@apply border-border"
+  global_outline: "@apply outline-ring/50"
+  body_bg: "@apply bg-background"
+  body_text: "@apply text-foreground"

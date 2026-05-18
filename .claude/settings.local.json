@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\jefferson\\\\OneDrive - ocvel.com.br\\\\Ocvel_jeff\\\\workspace\\\\ocvel-relatorio-ecd\\\\.claude\\\\kb\\\\ecd\\\\concepts\")",
+      "Bash(Out-Null)",
+      "Bash(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\jefferson\\\\OneDrive - ocvel.com.br\\\\Ocvel_jeff\\\\workspace\\\\ocvel-relatorio-ecd\\\\.claude\\\\kb\\\\ecd\\\\patterns\")",
+      "Bash(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\jefferson\\\\OneDrive - ocvel.com.br\\\\Ocvel_jeff\\\\workspace\\\\ocvel-relatorio-ecd\\\\.claude\\\\kb\\\\ecd\\\\specs\")",
+      "Bash(Write-Host \"Diretorios criados com sucesso\")",
+      "Bash(mkdir -p \"c:/Users/jefferson/OneDrive - ocvel.com.br/Ocvel_jeff/workspace/ocvel-relatorio-ecd/.claude/kb/ecd/concepts\")",
+      "Bash(mkdir -p \"c:/Users/jefferson/OneDrive - ocvel.com.br/Ocvel_jeff/workspace/ocvel-relatorio-ecd/.claude/kb/ecd/patterns\")",
+      "Bash(mkdir -p \"c:/Users/jefferson/OneDrive - ocvel.com.br/Ocvel_jeff/workspace/ocvel-relatorio-ecd/.claude/kb/ecd/specs\")",
+      "Bash(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\jefferson\\\\OneDrive - ocvel.com.br\\\\Ocvel_jeff\\\\workspace\\\\ocvel-relatorio-ecd\\\\.claude\\\\kb\\\\ocvel-frontend\\\\concepts\")",
+      "Bash(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\jefferson\\\\OneDrive - ocvel.com.br\\\\Ocvel_jeff\\\\workspace\\\\ocvel-relatorio-ecd\\\\.claude\\\\kb\\\\ocvel-frontend\\\\patterns\")",
+      "Bash(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\jefferson\\\\OneDrive - ocvel.com.br\\\\Ocvel_jeff\\\\workspace\\\\ocvel-relatorio-ecd\\\\.claude\\\\kb\\\\ocvel-frontend\\\\specs\")",
+      "Bash(Write-Host \"Directories created\")",
+      "Bash(mkdir -p \"c:/Users/jefferson/OneDrive - ocvel.com.br/Ocvel_jeff/workspace/ocvel-relatorio-ecd/.claude/kb/ocvel-frontend/concepts\")",
+      "Bash(mkdir -p \"c:/Users/jefferson/OneDrive - ocvel.com.br/Ocvel_jeff/workspace/ocvel-relatorio-ecd/.claude/kb/ocvel-frontend/patterns\")",
+      "Bash(mkdir -p \"c:/Users/jefferson/OneDrive - ocvel.com.br/Ocvel_jeff/workspace/ocvel-relatorio-ecd/.claude/kb/ocvel-frontend/specs\")",
+      "Bash(dir \"c:\\\\Users\\\\jefferson\\\\OneDrive - ocvel.com.br\\\\Ocvel_jeff\\\\workspace\\\\ocvel-relatorio-ecd\" /a)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\jefferson\\\\OneDrive - ocvel.com.br\\\\Ocvel_jeff\\\\workspace\\\\ocvel-relatorio-ecd\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(pnpm --version)",
+      "Bash(npm install *)",
+      "Bash(npx pnpm *)",
+      "Bash(pnpm install *)",
+      "Bash(ls ~/.config/claude/ 2>/dev/null || echo \"no config\")",
+      "Read(//c/Users/jefferson/.config/**)",
+      "Bash(supabase --version)",
+      "mcp__claude_ai_Supabase_OCVEL__list_migrations",
+      "mcp__claude_ai_Supabase_OCVEL__apply_migration",
+      "Bash(pnpm dlx *)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm test *)",
+      "Bash(mkdir -p \"c:/Users/jefferson/OneDrive - ocvel.com.br/Ocvel_jeff/workspace/ocvel-relatorio-ecd/.claude/sdd/reports\" 2>/dev/null; echo \"done\")",
+      "mcp__claude_ai_Supabase_OCVEL__list_tables",
+      "mcp__claude_ai_Supabase_OCVEL__execute_sql",
+      "mcp__claude_ai_Supabase_OCVEL__deploy_edge_function"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\jefferson\\OneDrive - ocvel.com.br\\Ocvel_jeff\\workspace\\ocvel-relatorio-ecd\\.claude\\sdd\\reports"
+    ]
+  }
+}
