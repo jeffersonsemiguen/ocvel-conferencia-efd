@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import (
     apuracao_reference, auth, cfop_cst, companies, correction, dashboard,
-    efd_files, fiscal_periods, pdf_apuracao, pr_adjustment, validation,
+    efd_files, fiscal_matrix, fiscal_periods, pdf_apuracao, pr_adjustment, validation,
 )
 
 app = FastAPI(
@@ -33,6 +33,7 @@ app.include_router(validation.router)
 app.include_router(correction.router)
 app.include_router(pr_adjustment.router)
 app.include_router(cfop_cst.router)
+app.include_router(fiscal_matrix.router)
 app.include_router(dashboard.router)
 
 

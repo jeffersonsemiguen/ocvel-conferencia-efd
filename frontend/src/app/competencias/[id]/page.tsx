@@ -550,11 +550,37 @@ function NovoValorDialog({
 
 // ─── Seção de Sugestões de Correção ──────────────────────────────────────────
 
-const RISK_CONFIG: Record<string, { label: string; color: string }> = {
-  high:   { label: "Alto risco",  color: "text-red-600" },
-  medium: { label: "Médio risco", color: "text-amber-600" },
-  low:    { label: "Baixo risco", color: "text-green-600" },
+const RISK_CONFIG: Record<string, { label: string; className: string }> = {
+  critical: { label: "Crítico",    className: "bg-destructive text-destructive-foreground" },
+  high:     { label: "Alto",       className: "bg-orange-100 text-orange-800" },
+  medium:   { label: "Médio",      className: "bg-primary/20 text-foreground" },
+  low:      { label: "Baixo",      className: "bg-muted text-muted-foreground" },
 };
+
+const TYPE_CONFIG: Record<string, { label: string; className: string }> = {
+  technical:     { label: "Técnico",      className: "bg-blue-100 text-blue-800" },
+  fiscal:        { label: "Fiscal",       className: "bg-primary/20 text-foreground" },
+  structural:    { label: "Estrutural",   className: "bg-purple-100 text-purple-800" },
+  informational: { label: "Informativo",  className: "bg-muted text-muted-foreground" },
+};
+
+function RiskBadge({ risk }: { risk: string }) {
+  const cfg = RISK_CONFIG[risk] ?? { label: risk, className: "bg-muted text-muted-foreground" };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cfg.className}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function TypeBadge({ type }: { type: string }) {
+  const cfg = TYPE_CONFIG[type] ?? { label: type, className: "bg-muted text-muted-foreground" };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cfg.className}`}>
+      {cfg.label}
+    </span>
+  );
+}
 
 function SugestoesSection({
   run,
@@ -572,7 +598,7 @@ function SugestoesSection({
   async function loadData() {
     try {
       const [sugs, files] = await Promise.all([
-        api.get<CorrectionSuggestion[]>(`/api/v1/validation-runs/${run.id}/suggestions`),
+        api.get<CorrectionSuggestion[]>(`/api/v1/validation-runs/${run.id}/correction-suggestions`),
         api.get<CorrectedFile[]>(`/api/v1/efd-files/${efdFileId}/corrected-files`),
       ]);
       setSuggestions(sugs);
@@ -585,14 +611,16 @@ function SugestoesSection({
   async function handleGenerate() {
     setLoadingGen(true);
     try {
-      const res = await api.post<{ generated: number; suggestions: CorrectionSuggestion[] }>(
-        `/api/v1/validation-runs/${run.id}/generate-suggestions`, {}
+      const res = await api.post<{ created: number; skipped: number; pending_total: number }>(
+        `/api/v1/validation-runs/${run.id}/correction-suggestions/generate`, {}
       );
-      setSuggestions(res.suggestions);
-      if (res.generated === 0) {
+      // Reload the list after generation
+      const sugs = await api.get<CorrectionSuggestion[]>(`/api/v1/validation-runs/${run.id}/correction-suggestions`);
+      setSuggestions(sugs);
+      if (res.created === 0) {
         toast.info("Nenhuma sugestão automática disponível para os achados desta conferência");
       } else {
-        toast.success(`${res.generated} sugestão(ões) gerada(s)`);
+        toast.success(`${res.created} sugestão(ões) gerada(s) · ${res.skipped} ignorada(s)`);
         setExpanded(true);
       }
     } catch (err) {
@@ -606,7 +634,10 @@ function SugestoesSection({
     try {
       const updated = await api.post<CorrectionSuggestion>(`/api/v1/correction-suggestions/${id}/approve`, {});
       setSuggestions(prev => prev.map(s => s.id === id ? updated : s));
-    } catch { toast.error("Erro ao aprovar"); }
+      toast.success("Sugestão aprovada");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao aprovar");
+    }
   }
 
   async function handleReject(id: string) {
@@ -616,20 +647,34 @@ function SugestoesSection({
     } catch { toast.error("Erro ao rejeitar"); }
   }
 
-  async function handleApproveAll() {
-    const pending = suggestions.filter(s => s.status === "pending").map(s => s.id);
-    if (!pending.length) return;
+  async function handleBulkApprove() {
+    const pendingLowMed = suggestions
+      .filter(s => s.status === "pending" && !["high", "critical"].includes(s.risk_level))
+      .map(s => s.id);
+    if (!pendingLowMed.length) {
+      toast.info("Nenhuma sugestão de baixo/médio risco para aprovar em lote");
+      return;
+    }
     try {
-      await api.post(`/api/v1/correction-suggestions/bulk-approve`, pending);
-      setSuggestions(prev => prev.map(s => pending.includes(s.id) ? { ...s, status: "approved" } : s));
-      toast.success(`${pending.length} sugestão(ões) aprovada(s)`);
-    } catch { toast.error("Erro ao aprovar em lote"); }
+      const res = await api.post<{ approved: number }>(
+        `/api/v1/correction-suggestions/bulk-approve`,
+        { suggestion_ids: pendingLowMed }
+      );
+      // Reload list for accuracy
+      const sugs = await api.get<CorrectionSuggestion[]>(`/api/v1/validation-runs/${run.id}/correction-suggestions`);
+      setSuggestions(sugs);
+      toast.success(`${res.approved} sugestão(ões) aprovada(s) em lote`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao aprovar em lote");
+    }
   }
 
   async function handleGenerateTxt() {
     setLoadingTxt(true);
     try {
-      const corrected = await api.post<CorrectedFile>(`/api/v1/efd-files/${efdFileId}/generate-corrected`, {});
+      const corrected = await api.post<CorrectedFile>(
+        `/api/v1/efd-files/${efdFileId}/corrected-files/generate`, {}
+      );
       setCorrectedFiles(prev => [corrected, ...prev]);
       toast.success(`TXT corrigido gerado: ${corrected.generated_filename}`);
     } catch (err) {
@@ -641,10 +686,11 @@ function SugestoesSection({
 
   const pending = suggestions.filter(s => s.status === "pending");
   const approved = suggestions.filter(s => s.status === "approved");
+  const rejected = suggestions.filter(s => s.status === "rejected");
   const hasSuggestions = suggestions.length > 0;
 
   return (
-    <div className="border rounded-lg overflow-hidden mt-4">
+    <div className="border rounded-lg overflow-hidden mt-4 bg-card">
       <div
         className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/30 bg-muted/10"
         onClick={() => setExpanded(e => !e)}
@@ -653,13 +699,16 @@ function SugestoesSection({
           {expanded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
           <span className="text-sm font-semibold">Sugestões de Correção</span>
           {hasSuggestions && (
-            <Badge variant="secondary" className="text-xs">{suggestions.length}</Badge>
+            <Badge variant="secondary" className="text-xs">{suggestions.length} total</Badge>
           )}
           {pending.length > 0 && (
             <Badge variant="outline" className="text-xs text-amber-600">{pending.length} pendente(s)</Badge>
           )}
           {approved.length > 0 && (
             <Badge variant="default" className="text-xs">{approved.length} aprovada(s)</Badge>
+          )}
+          {rejected.length > 0 && (
+            <Badge variant="secondary" className="text-xs">{rejected.length} rejeitada(s)</Badge>
           )}
         </div>
         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
@@ -668,9 +717,9 @@ function SugestoesSection({
             {loadingGen ? "Gerando..." : "Gerar sugestões"}
           </Button>
           {approved.length > 0 && (
-            <Button size="sm" onClick={handleGenerateTxt} disabled={loadingTxt}>
+            <Button size="sm" className="bg-primary" onClick={handleGenerateTxt} disabled={loadingTxt}>
               <DownloadIcon className="w-3.5 h-3.5 mr-1" />
-              {loadingTxt ? "Gerando TXT..." : "Gerar TXT corrigido"}
+              {loadingTxt ? "Gerando TXT..." : "Gerar TXT Corrigido"}
             </Button>
           )}
         </div>
@@ -686,9 +735,14 @@ function SugestoesSection({
             <>
               {pending.length > 0 && (
                 <div className="flex items-center justify-between px-4 py-2 bg-amber-50/30 border-b text-xs">
-                  <span className="text-amber-700">{pending.length} sugestão(ões) aguardando revisão</span>
-                  <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={handleApproveAll}>
-                    <CheckIcon className="w-3 h-3 mr-1" />Aprovar todas
+                  <span className="text-amber-700">
+                    {pending.length} sugestão(ões) aguardando revisão
+                    {pending.some(s => ["high", "critical"].includes(s.risk_level)) && (
+                      <span className="ml-2 text-destructive font-medium">· contém risco alto/crítico (aprovação individual)</span>
+                    )}
+                  </span>
+                  <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={handleBulkApprove}>
+                    <CheckIcon className="w-3 h-3 mr-1" />Aprovar baixo/médio risco
                   </Button>
                 </div>
               )}
@@ -697,53 +751,65 @@ function SugestoesSection({
                   <TableRow>
                     <TableHead className="w-16">Linha</TableHead>
                     <TableHead className="w-16">Registro</TableHead>
-                    <TableHead>Campo</TableHead>
-                    <TableHead>Valor atual (TXT)</TableHead>
+                    <TableHead className="w-24">Tipo</TableHead>
+                    <TableHead>Campo / Motivo</TableHead>
+                    <TableHead>Valor atual</TableHead>
                     <TableHead>Valor sugerido</TableHead>
-                    <TableHead className="w-20">Risco</TableHead>
+                    <TableHead className="w-24">Risco</TableHead>
                     <TableHead className="w-28">Status</TableHead>
                     <TableHead className="w-36" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {suggestions.map(s => {
-                    const risk = RISK_CONFIG[s.risk_level] ?? { label: s.risk_level, color: "" };
-                    return (
-                      <TableRow key={s.id} className={s.status === "rejected" ? "opacity-40" : ""}>
-                        <TableCell className="font-mono text-xs">{s.line_number}</TableCell>
-                        <TableCell className="font-mono text-xs">{s.register_code}</TableCell>
-                        <TableCell>
-                          <p className="text-xs font-mono">{s.field_name}</p>
-                          {s.suggestion_reason && (
-                            <p className="text-xs text-muted-foreground mt-0.5 max-w-xs truncate">{s.suggestion_reason}</p>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">{s.original_value ?? "—"}</TableCell>
-                        <TableCell className="font-mono text-xs font-medium">{s.suggested_value}</TableCell>
-                        <TableCell className={`text-xs ${risk.color}`}>{risk.label}</TableCell>
-                        <TableCell>
-                          {s.status === "pending" && <Badge variant="outline" className="text-xs">Pendente</Badge>}
-                          {s.status === "approved" && <Badge variant="default" className="text-xs gap-1"><CheckIcon className="w-3 h-3" />Aprovado</Badge>}
-                          {s.status === "rejected" && <Badge variant="secondary" className="text-xs gap-1"><XIcon className="w-3 h-3" />Rejeitado</Badge>}
-                          {s.status === "applied" && <Badge variant="default" className="text-xs">Aplicado</Badge>}
-                        </TableCell>
-                        <TableCell>
-                          {s.status === "pending" && (
-                            <div className="flex gap-1">
-                              <Button size="sm" variant="default" className="h-6 text-xs px-2"
-                                onClick={() => handleApprove(s.id)}>
-                                <CheckIcon className="w-3 h-3 mr-1" />Aprovar
-                              </Button>
-                              <Button size="sm" variant="ghost" className="h-6 text-xs px-2 text-destructive"
-                                onClick={() => handleReject(s.id)}>
-                                Rejeitar
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {suggestions.map(s => (
+                    <TableRow key={s.id} className={s.status === "rejected" ? "opacity-40" : ""}>
+                      <TableCell className="font-mono text-xs">
+                        {s.line_number > 0 ? s.line_number : "—"}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{s.register_code || "—"}</TableCell>
+                      <TableCell>
+                        <TypeBadge type={s.suggestion_type} />
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-xs font-mono">{s.field_name || "—"}</p>
+                        {s.suggestion_reason && (
+                          <p className="text-xs text-muted-foreground mt-0.5 max-w-xs truncate">{s.suggestion_reason}</p>
+                        )}
+                        {s.rule_code && (
+                          <p className="text-xs text-muted-foreground font-mono">{s.rule_code}</p>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{s.original_value ?? "—"}</TableCell>
+                      <TableCell className="font-mono text-xs font-medium max-w-[160px] truncate" title={s.suggested_value}>
+                        {s.suggested_value}
+                      </TableCell>
+                      <TableCell>
+                        <RiskBadge risk={s.risk_level} />
+                      </TableCell>
+                      <TableCell>
+                        {s.status === "pending" && <Badge variant="outline" className="text-xs">Pendente</Badge>}
+                        {s.status === "approved" && <Badge variant="default" className="text-xs gap-1"><CheckIcon className="w-3 h-3" />Aprovado</Badge>}
+                        {s.status === "rejected" && <Badge variant="secondary" className="text-xs gap-1"><XIcon className="w-3 h-3" />Rejeitado</Badge>}
+                        {s.status === "applied" && <Badge variant="default" className="text-xs">Aplicado</Badge>}
+                        {s.status === "conflict" && <Badge variant="destructive" className="text-xs">Conflito</Badge>}
+                        {s.status === "canceled" && <Badge variant="secondary" className="text-xs">Cancelado</Badge>}
+                      </TableCell>
+                      <TableCell>
+                        {s.status === "pending" && (
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="default" className="h-6 text-xs px-2"
+                              onClick={() => handleApprove(s.id)}>
+                              <CheckIcon className="w-3 h-3 mr-1" />Aprovar
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-6 text-xs px-2 text-destructive"
+                              onClick={() => handleReject(s.id)}>
+                              Rejeitar
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </>
@@ -759,7 +825,9 @@ function SugestoesSection({
                     <div>
                       <span className="font-mono text-xs">{cf.generated_filename}</span>
                       <span className="text-xs text-muted-foreground ml-2">
-                        {cf.applied_suggestions_count} alteração(ões) · {new Date(cf.generated_at).toLocaleString("pt-BR")}
+                        {cf.applied_suggestions_count} alteração(ões)
+                        {cf.total_lines != null && ` · ${cf.total_lines.toLocaleString()} linhas`}
+                        {" · "}{new Date(cf.generated_at).toLocaleString("pt-BR")}
                       </span>
                     </div>
                     <a

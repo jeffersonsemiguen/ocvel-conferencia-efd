@@ -20,6 +20,8 @@ from app.models.pr_adjustment import (
 from app.models.cfop_cst_rule import CfopCstRule
 from app.models.efd_bloco0 import EfdBloco0Part, EfdBloco0Item
 from app.models.efd_bloco_h import EfdBlocoH005, EfdBlocoH010
+from app.models.efd_bloco_gk import EfdBlocoG110, EfdBlocoG125, EfdBlocoK100, EfdBlocoK200
+from app.models.fiscal_matrix import CfopCstFullRule, CfopIpiCstRule, StructuralObligationRule
 
 __all__ = [
     "Company", "User", "FiscalPeriod", "EfdFile",

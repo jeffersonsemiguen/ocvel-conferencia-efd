@@ -38,6 +38,7 @@ export interface CorrectionSuggestion {
   id: string;
   finding_id: string;
   efd_file_id: string;
+  validation_run_id: string | null;
   line_number: number;
   register_code: string;
   field_index: number;
@@ -45,8 +46,15 @@ export interface CorrectionSuggestion {
   original_value: string | null;
   suggested_value: string;
   suggestion_reason: string | null;
+  // low | medium | high | critical
   risk_level: string;
+  // pending | approved | rejected | applied | canceled | conflict
   status: string;
+  // technical | fiscal | structural | informational
+  suggestion_type: string;
+  // update_field | replace_line | insert_line_after | insert_line_before | delete_line | recalculate_total
+  action_type: string;
+  rule_code: string | null;
   approved_by: string | null;
   approved_at: string | null;
   rejected_by: string | null;
@@ -61,6 +69,9 @@ export interface CorrectedFile {
   generated_filename: string;
   file_hash: string | null;
   applied_suggestions_count: number;
+  total_bytes: number | null;
+  total_lines: number | null;
+  // ready | error | generated | downloaded | archived | invalidated
   status: string;
   generated_at: string;
 }

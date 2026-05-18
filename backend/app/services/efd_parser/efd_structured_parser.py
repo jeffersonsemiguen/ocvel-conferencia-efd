@@ -211,6 +211,53 @@ class ParsedH010:
 
 
 @dataclass
+class ParsedG110:
+    line_number: int
+    dt_ini: str | None
+    dt_fin: str | None
+    saldo_in_icms: Decimal | None
+    som_parc: Decimal | None
+    vl_trib_exp: Decimal | None
+    vl_total: Decimal | None
+    ind_per_sai: Decimal | None
+    icms_aprop: Decimal | None
+    som_icms_oc: Decimal | None
+
+
+@dataclass
+class ParsedG125:
+    line_number: int
+    parent_g110_line_number: int | None
+    cod_ind_bem: str | None
+    dt_mov: str | None
+    tipo_mov: str | None
+    vl_imob_icms_op: Decimal | None
+    vl_imob_icms_st: Decimal | None
+    vl_imob_icms_frt: Decimal | None
+    vl_imob_icms_dif: Decimal | None
+    num_parc: int | None
+    vl_parc_pass: Decimal | None
+
+
+@dataclass
+class ParsedK100:
+    line_number: int
+    dt_ini: str | None
+    dt_fin: str | None
+
+
+@dataclass
+class ParsedK200:
+    line_number: int
+    parent_k100_line_number: int | None
+    dt_est: str | None
+    cod_item: str | None
+    qtd: Decimal | None
+    ind_est: str | None
+    cod_part: str | None
+
+
+@dataclass
 class EfdStructuredParseResult:
     c100_records: list[ParsedC100] = field(default_factory=list)
     c190_records: list[ParsedC190] = field(default_factory=list)
@@ -224,6 +271,10 @@ class EfdStructuredParseResult:
     bloco0_item_records: list[Parsed0200] = field(default_factory=list)
     bloco_h005_records: list[ParsedH005] = field(default_factory=list)
     bloco_h010_records: list[ParsedH010] = field(default_factory=list)
+    bloco_g110_records: list[ParsedG110] = field(default_factory=list)
+    bloco_g125_records: list[ParsedG125] = field(default_factory=list)
+    bloco_k100_records: list[ParsedK100] = field(default_factory=list)
+    bloco_k200_records: list[ParsedK200] = field(default_factory=list)
     total_lines: int = 0
     error: str | None = None
 
@@ -234,6 +285,8 @@ def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
     current_e111_line: int | None = None
     current_e500_line: int | None = None
     current_h005_line: int | None = None
+    current_g110_line: int | None = None
+    current_k100_line: int | None = None
 
     try:
         with open(file_path, encoding="latin-1") as f:
@@ -302,6 +355,28 @@ def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
                     parsed = _parse_h010(parts, line_no, current_h005_line)
                     if parsed:
                         result.bloco_h010_records.append(parsed)
+
+                elif rec == "G110":
+                    current_g110_line = line_no
+                    parsed = _parse_g110(parts, line_no)
+                    if parsed:
+                        result.bloco_g110_records.append(parsed)
+
+                elif rec == "G125":
+                    parsed = _parse_g125(parts, line_no, current_g110_line)
+                    if parsed:
+                        result.bloco_g125_records.append(parsed)
+
+                elif rec == "K100":
+                    current_k100_line = line_no
+                    parsed = _parse_k100(parts, line_no)
+                    if parsed:
+                        result.bloco_k100_records.append(parsed)
+
+                elif rec == "K200":
+                    parsed = _parse_k200(parts, line_no, current_k100_line)
+                    if parsed:
+                        result.bloco_k200_records.append(parsed)
 
                 elif rec == "E500":
                     current_e500_line = line_no
@@ -531,6 +606,69 @@ def _parse_0150(parts: list[str], line_no: int) -> Parsed0150 | None:
         num=_str(parts[11]) if len(parts) > 11 else None,
         compl=_str(parts[12]) if len(parts) > 12 else None,
         bairro=_str(parts[13]) if len(parts) > 13 else None,
+    )
+
+
+def _parse_g110(parts: list[str], line_no: int) -> ParsedG110 | None:
+    # |G110|DT_INI|DT_FIN|SALDO_IN_ICMS|SOM_PARC|VL_TRIB_EXP|VL_TOTAL|IND_PER_SAI|ICMS_APROP|SOM_ICMS_OC|
+    if len(parts) < 4:
+        return None
+    return ParsedG110(
+        line_number=line_no,
+        dt_ini=_str(parts[2]) if len(parts) > 2 else None,
+        dt_fin=_str(parts[3]) if len(parts) > 3 else None,
+        saldo_in_icms=_dec(parts[4]) if len(parts) > 4 else None,
+        som_parc=_dec(parts[5]) if len(parts) > 5 else None,
+        vl_trib_exp=_dec(parts[6]) if len(parts) > 6 else None,
+        vl_total=_dec(parts[7]) if len(parts) > 7 else None,
+        ind_per_sai=_dec(parts[8]) if len(parts) > 8 else None,
+        icms_aprop=_dec(parts[9]) if len(parts) > 9 else None,
+        som_icms_oc=_dec(parts[10]) if len(parts) > 10 else None,
+    )
+
+
+def _parse_g125(parts: list[str], line_no: int, parent: int | None) -> ParsedG125 | None:
+    # |G125|COD_IND_BEM|DT_MOV|TIPO_MOV|VL_IMOB_ICMS_OP|VL_IMOB_ICMS_ST|VL_IMOB_ICMS_FRT|VL_IMOB_ICMS_DIF|NUM_PARC|VL_PARC_PASS|
+    if len(parts) < 4:
+        return None
+    return ParsedG125(
+        line_number=line_no,
+        parent_g110_line_number=parent,
+        cod_ind_bem=_str(parts[2]) if len(parts) > 2 else None,
+        dt_mov=_str(parts[3]) if len(parts) > 3 else None,
+        tipo_mov=_str(parts[4]) if len(parts) > 4 else None,
+        vl_imob_icms_op=_dec(parts[5]) if len(parts) > 5 else None,
+        vl_imob_icms_st=_dec(parts[6]) if len(parts) > 6 else None,
+        vl_imob_icms_frt=_dec(parts[7]) if len(parts) > 7 else None,
+        vl_imob_icms_dif=_dec(parts[8]) if len(parts) > 8 else None,
+        num_parc=_int(parts[9]) if len(parts) > 9 else None,
+        vl_parc_pass=_dec(parts[10]) if len(parts) > 10 else None,
+    )
+
+
+def _parse_k100(parts: list[str], line_no: int) -> ParsedK100 | None:
+    # |K100|DT_INI|DT_FIN|
+    if len(parts) < 3:
+        return None
+    return ParsedK100(
+        line_number=line_no,
+        dt_ini=_str(parts[2]) if len(parts) > 2 else None,
+        dt_fin=_str(parts[3]) if len(parts) > 3 else None,
+    )
+
+
+def _parse_k200(parts: list[str], line_no: int, parent: int | None) -> ParsedK200 | None:
+    # |K200|DT_EST|COD_ITEM|QTD|IND_EST|COD_PART|
+    if len(parts) < 4:
+        return None
+    return ParsedK200(
+        line_number=line_no,
+        parent_k100_line_number=parent,
+        dt_est=_str(parts[2]) if len(parts) > 2 else None,
+        cod_item=_str(parts[3]) if len(parts) > 3 else None,
+        qtd=_dec(parts[4]) if len(parts) > 4 else None,
+        ind_est=_str(parts[5]) if len(parts) > 5 else None,
+        cod_part=_str(parts[6]) if len(parts) > 6 else None,
     )
 
 

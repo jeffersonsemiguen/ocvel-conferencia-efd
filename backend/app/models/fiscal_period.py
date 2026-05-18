@@ -18,6 +18,9 @@ class FiscalPeriod(Base):
     # Status: pending, processing, completed, error
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     uses_auxiliary_ie: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    uses_ciap: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    requires_block_k: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    requires_inventory: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

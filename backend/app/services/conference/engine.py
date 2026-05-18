@@ -122,6 +122,12 @@ def run_conference(
     # ── 9. Bloco H — inventário ──────────────────────────────────────────────
     _conf_bloco_h(db, efd_file_id, tol, findings)
 
+    # ── 10. Validações estruturais (G, K, cadastros) ──────────────────────────
+    _conf_structural(db, efd_file_id, fiscal_period_id, findings)
+
+    # ── 11. Matriz CFOP×CST (versão completa) ────────────────────────────────
+    _conf_cfop_cst_matrix(db, efd_file_id, fiscal_period_id, findings)
+
     # Persiste findings
     _save_findings(db, run, findings)
 
@@ -836,6 +842,46 @@ def _conf_part_001(
             register_code="E113",
             field_name="cod_item",
         ))
+
+
+def _conf_structural(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    fiscal_period_id: uuid.UUID,
+    findings: list[Finding],
+) -> None:
+    from app.models.fiscal_period import FiscalPeriod
+    from app.models.company import Company
+    from app.services.structural_validations.structural_obligation_validation_service import run_structural_validation
+    period = db.query(FiscalPeriod).filter(FiscalPeriod.id == fiscal_period_id).first()
+    if not period:
+        return
+    company = db.query(Company).filter(Company.id == period.company_id).first()
+    if not company:
+        return
+    new_findings = run_structural_validation(db, efd_file_id, period, company)
+    findings.extend(new_findings)
+
+
+def _conf_cfop_cst_matrix(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    fiscal_period_id: uuid.UUID,
+    findings: list[Finding],
+) -> None:
+    from app.models.fiscal_period import FiscalPeriod
+    from app.services.fiscal_matrix.cfop_cst_validation_service import run_cfop_cst_validation
+    from datetime import date
+    period = db.query(FiscalPeriod).filter(FiscalPeriod.id == fiscal_period_id).first()
+    if not period:
+        return
+    # Só roda se houver regras cadastradas na tabela nova
+    from app.models.fiscal_matrix import CfopCstFullRule
+    if not db.query(CfopCstFullRule).filter(CfopCstFullRule.is_active == True).first():
+        return
+    competence = date(period.year, period.month, 1)
+    new_findings = run_cfop_cst_validation(db, efd_file_id, competence)
+    findings.extend(new_findings)
 
 
 def _save_findings(

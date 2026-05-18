@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.efd_bloco0 import EfdBloco0Item, EfdBloco0Part
 from app.models.efd_bloco_h import EfdBlocoH005, EfdBlocoH010
+from app.models.efd_bloco_gk import EfdBlocoG110, EfdBlocoG125, EfdBlocoK100, EfdBlocoK200
 from app.models.efd_c100 import EfdC100Doc
 from app.models.efd_c190 import EfdC190Analytics
 from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
@@ -217,6 +218,57 @@ def persist_structured_records(
             cest=r.cest,
         ))
 
+    for r in result.bloco_g110_records:
+        db.add(EfdBlocoG110(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            dt_ini=r.dt_ini,
+            dt_fin=r.dt_fin,
+            saldo_in_icms=r.saldo_in_icms,
+            som_parc=r.som_parc,
+            vl_trib_exp=r.vl_trib_exp,
+            vl_total=r.vl_total,
+            ind_per_sai=r.ind_per_sai,
+            icms_aprop=r.icms_aprop,
+            som_icms_oc=r.som_icms_oc,
+        ))
+
+    for r in result.bloco_g125_records:
+        db.add(EfdBlocoG125(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            parent_g110_line_number=r.parent_g110_line_number,
+            cod_ind_bem=r.cod_ind_bem,
+            dt_mov=r.dt_mov,
+            tipo_mov=r.tipo_mov,
+            vl_imob_icms_op=r.vl_imob_icms_op,
+            vl_imob_icms_st=r.vl_imob_icms_st,
+            vl_imob_icms_frt=r.vl_imob_icms_frt,
+            vl_imob_icms_dif=r.vl_imob_icms_dif,
+            num_parc=r.num_parc,
+            vl_parc_pass=r.vl_parc_pass,
+        ))
+
+    for r in result.bloco_k100_records:
+        db.add(EfdBlocoK100(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            dt_ini=r.dt_ini,
+            dt_fin=r.dt_fin,
+        ))
+
+    for r in result.bloco_k200_records:
+        db.add(EfdBlocoK200(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            parent_k100_line_number=r.parent_k100_line_number,
+            dt_est=r.dt_est,
+            cod_item=r.cod_item,
+            qtd=r.qtd,
+            ind_est=r.ind_est,
+            cod_part=r.cod_part,
+        ))
+
     db.flush()
 
 
@@ -255,6 +307,10 @@ def _clear_existing(db: Session, efd_file_id: uuid.UUID) -> None:
     for model in (
         EfdBlocoH005,
         EfdBlocoH010,
+        EfdBlocoG110,
+        EfdBlocoG125,
+        EfdBlocoK100,
+        EfdBlocoK200,
         EfdBloco0Part,
         EfdBloco0Item,
         EfdC100Doc,

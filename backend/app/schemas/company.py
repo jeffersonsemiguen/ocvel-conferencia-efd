@@ -10,6 +10,9 @@ class CompanyCreate(BaseModel):
     trade_name: str | None = None
     state_registration: str | None = None
     state: str | None = None
+    uses_ciap: bool | None = None
+    requires_block_k: bool | None = None
+    requires_inventory: bool | None = None
 
 
 class CompanyUpdate(BaseModel):
@@ -18,6 +21,9 @@ class CompanyUpdate(BaseModel):
     state_registration: str | None = None
     state: str | None = None
     is_active: bool | None = None
+    uses_ciap: bool | None = None
+    requires_block_k: bool | None = None
+    requires_inventory: bool | None = None
 
 
 class CompanyResponse(BaseModel):
@@ -28,6 +34,9 @@ class CompanyResponse(BaseModel):
     state_registration: str | None
     state: str | None
     is_active: bool
+    uses_ciap: bool | None = None
+    requires_block_k: bool | None = None
+    requires_inventory: bool | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
