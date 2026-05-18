@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOutIcon, LayoutDashboard, Building2, Settings } from "lucide-react";
@@ -15,7 +16,13 @@ const links = [
 export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const user = getUser();
+  const [user, setUser] = useState<ReturnType<typeof getUser>>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setUser(getUser());
+    setMounted(true);
+  }, []);
 
   function handleLogout() {
     clearAuth();
@@ -58,25 +65,27 @@ export function Navbar() {
         })}
 
         {/* User + logout */}
-        <div className="ml-auto flex items-center gap-3">
-          {user && (
-            <span className="text-xs text-muted-foreground hidden md:block">
-              {user.name}
-              {user.role === "admin" && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] bg-primary/20 text-primary-foreground font-medium">
-                  admin
-                </span>
-              )}
-            </span>
-          )}
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          >
-            <LogOutIcon className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Sair</span>
-          </button>
-        </div>
+        {mounted && (
+          <div className="ml-auto flex items-center gap-3">
+            {user && (
+              <span className="text-xs text-muted-foreground hidden md:block">
+                {user.name}
+                {user.role === "admin" && (
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] bg-primary/20 text-primary-foreground font-medium">
+                    admin
+                  </span>
+                )}
+              </span>
+            )}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <LogOutIcon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sair</span>
+            </button>
+          </div>
+        )}
       </div>
     </nav>
   );

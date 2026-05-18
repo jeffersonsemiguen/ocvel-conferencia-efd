@@ -1,0 +1,16 @@
+- Iniciar back-and
+cd "C:\Users\jefferson\OneDrive - ocvel.com.br\Ocvel_jeff\workspace\ocvel-conferencia-efd\backend"
+.\.venv\Scripts\activate
+uvicorn app.main:app --reload --port 8000
+
+-iniciar adm - curl -X POST http://localhost:8000/auth/seed-admin
+
+
+- Iniciar front-end
+cd "C:\Users\jefferson\OneDrive - ocvel.com.br\Ocvel_jeff\workspace\ocvel-conferencia-efd\frontend"
+npm run dev
+
+http://localhost:3000 (or 3001/3002 if 3000 is busy)
+
+admin@fiscalcheck.local
+admin123
