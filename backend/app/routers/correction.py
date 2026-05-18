@@ -9,13 +9,15 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
 from app.models.correction import CorrectedFile, CorrectionSuggestion
 from app.models.efd_file import EfdFile
 from app.models.validation import ValidationRun
 from app.services.correction.suggestion_generator import generate_suggestions_for_run
 from app.services.correction.txt_corrector import generate_corrected_txt
 
-router = APIRouter(prefix="/api/v1", tags=["correction"])
+router = APIRouter(dependencies=[Depends(get_current_user)], prefix="/api/v1", tags=["correction"])
 
 
 class RejectBody(BaseModel):

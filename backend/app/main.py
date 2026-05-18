@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import apuracao_reference, companies, correction, efd_files, fiscal_periods, pdf_apuracao, pr_adjustment, validation
+from app.routers import (
+    apuracao_reference, auth, cfop_cst, companies, correction, dashboard,
+    efd_files, fiscal_periods, pdf_apuracao, pr_adjustment, validation,
+)
 
 app = FastAPI(
     title="FiscalCheck EFD ICMS/IPI",
@@ -17,6 +20,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Autenticação (rotas públicas: /auth/login, /auth/seed-admin)
+app.include_router(auth.router)
+
+# Rotas protegidas por JWT
 app.include_router(companies.router)
 app.include_router(fiscal_periods.router)
 app.include_router(efd_files.router)
@@ -25,6 +32,8 @@ app.include_router(apuracao_reference.router)
 app.include_router(validation.router)
 app.include_router(correction.router)
 app.include_router(pr_adjustment.router)
+app.include_router(cfop_cst.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/health")

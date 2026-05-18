@@ -4,10 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
 from app.models.company import Company
 from app.schemas.company import CompanyCreate, CompanyResponse, CompanyUpdate
 
-router = APIRouter(prefix="/api/v1/companies", tags=["companies"])
+router = APIRouter(dependencies=[Depends(get_current_user)], prefix="/api/v1/companies", tags=["companies"])
 
 
 @router.get("/", response_model=list[CompanyResponse])

@@ -862,10 +862,23 @@ function ConferenciaTab({ period }: { period: FiscalPeriod }) {
             <p className="text-sm text-muted-foreground">Nenhuma conferência executada ainda</p>
           )}
         </div>
-        <Button size="sm" onClick={executeConference} disabled={running}>
-          <PlayIcon className="w-3.5 h-3.5 mr-1" />
-          {running ? "Executando..." : "Executar conferência"}
-        </Button>
+        <div className="flex gap-2">
+          {activeRun && (
+            <a
+              href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/validation-runs/${activeRun.id}/export-xlsx`}
+              download
+            >
+              <Button size="sm" variant="outline">
+                <DownloadIcon className="w-3.5 h-3.5 mr-1" />
+                Exportar XLSX
+              </Button>
+            </a>
+          )}
+          <Button size="sm" onClick={executeConference} disabled={running}>
+            <PlayIcon className="w-3.5 h-3.5 mr-1" />
+            {running ? "Executando..." : "Executar conferência"}
+          </Button>
+        </div>
       </div>
 
       {/* Histórico de execuções */}

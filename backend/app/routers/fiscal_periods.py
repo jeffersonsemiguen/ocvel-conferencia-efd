@@ -4,11 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
 from app.models.company import Company
 from app.models.fiscal_period import FiscalPeriod
 from app.schemas.fiscal_period import FiscalPeriodCreate, FiscalPeriodResponse
 
-router = APIRouter(prefix="/api/v1/fiscal-periods", tags=["fiscal-periods"])
+router = APIRouter(dependencies=[Depends(get_current_user)], prefix="/api/v1/fiscal-periods", tags=["fiscal-periods"])
 
 
 @router.get("/", response_model=list[FiscalPeriodResponse])

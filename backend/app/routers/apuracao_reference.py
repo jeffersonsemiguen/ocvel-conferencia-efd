@@ -6,11 +6,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
 from app.models.apuracao_reference import ApuracaoReferenceValue
 from app.models.fiscal_period import FiscalPeriod
 from app.services.apuracao.spreadsheet_import_service import import_csv, import_xlsx
 
-router = APIRouter(prefix="/api/v1", tags=["apuracao-reference"])
+router = APIRouter(dependencies=[Depends(get_current_user)], prefix="/api/v1", tags=["apuracao-reference"])
 
 VALID_OPERATION_TYPES = {
     "entrada", "saida", "apuracao_icms", "apuracao_icms_st",

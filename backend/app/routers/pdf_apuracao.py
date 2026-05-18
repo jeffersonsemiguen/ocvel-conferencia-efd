@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
 from app.models.fiscal_period import FiscalPeriod
 from app.models.pdf_apuracao import PdfApuracaoFile, PdfExtractedPage
 from app.services.apuracao.pdf_text_extraction_service import extract_pdf_text
 
-router = APIRouter(prefix="/api/v1", tags=["pdf-apuracao"])
+router = APIRouter(dependencies=[Depends(get_current_user)], prefix="/api/v1", tags=["pdf-apuracao"])
 
 
 @router.post(

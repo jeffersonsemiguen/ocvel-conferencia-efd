@@ -5,10 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
 from app.models.pr_adjustment import PrAdjustmentCode
 from app.services.pr_adjustment.md_parser import parse_markdown
 
-router = APIRouter(prefix="/api/v1/pr-adjustment-codes", tags=["pr-adjustment"])
+router = APIRouter(dependencies=[Depends(get_current_user)], prefix="/api/v1/pr-adjustment-codes", tags=["pr-adjustment"])
 
 SEED_FILE_ENV = "PR_ADJUSTMENT_MD_PATH"
 

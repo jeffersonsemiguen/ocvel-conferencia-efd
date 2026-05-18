@@ -5,10 +5,14 @@ Regras implementadas:
   CONF-C190-ENTRADA  — C190 entradas vs referência (por CFOP+CST)
   CONF-C190-SAIDA    — C190 saídas vs referência (por CFOP+CST)
   CONF-C190-C100     — C190 vs C100: soma dos filhos deve bater com o documento
+  CONF-CFOP-CST      — Compatibilidade CFOP × CST (matriz)
   CONF-E110          — Apuração ICMS E110 vs referência
   CONF-E520          — Apuração IPI E520 vs referência
   CONF-E510          — Consolidação IPI E510 vs referência (por CFOP+CST_IPI)
   CONF-REF-PENDENTE  — Referências não revisadas antes de comparar
+  REGRA-PR-001/002/003 — Códigos de ajuste PR (E111/E112/E113)
+  REGRA-CAD-001      — C100 referencia participante não cadastrado no 0150
+  REGRA-PART-001     — C190 referencia item não cadastrado no 0200
 """
 from __future__ import annotations
 
@@ -20,10 +24,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.apuracao_reference import ApuracaoReferenceValue
+from app.models.efd_bloco0 import EfdBloco0Item, EfdBloco0Part
 from app.models.efd_c100 import EfdC100Doc
 from app.models.efd_c190 import EfdC190Analytics
 from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
 from app.models.efd_e510_e520 import EfdE510IpiConsolidation, EfdE520IpiApuracao
+from app.models.cfop_cst_rule import CfopCstRule
 from app.models.pr_adjustment import EfdE112AdjustmentInfo, EfdE113AdjustmentDoc, PrAdjustmentCode
 from app.models.validation import ValidationFinding, ValidationRun
 
@@ -81,6 +87,9 @@ def run_conference(
     # ── 1. C190 vs C100 (consistência interna do arquivo) ───────────────────
     _conf_c190_vs_c100(db, efd_file_id, tol, findings)
 
+    # ── 2. CFOP × CST (compatibilidade da matriz) ───────────────────────────
+    _conf_cfop_cst(db, efd_file_id, findings)
+
     # ── 2. C190 Entradas vs referência ─────────────────────────────────────
     _conf_c190(db, efd_file_id, refs_by_op.get("entrada", []),
                "entrada", tol, findings)
@@ -100,6 +109,12 @@ def run_conference(
 
     # ── 6. Validação de códigos de ajuste PR (E111/E112/E113) ────────────────
     _conf_pr_adjustments(db, efd_file_id, findings)
+
+    # ── 7. Cadastro de participantes (0150 × C100) ───────────────────────────
+    _conf_cad_001(db, efd_file_id, findings)
+
+    # ── 8. Cadastro de itens (0200 × C190) ──────────────────────────────────
+    _conf_part_001(db, efd_file_id, findings)
 
     # Persiste findings
     _save_findings(db, run, findings)
@@ -215,6 +230,86 @@ def _conf_c190_vs_c100(
                     reference_value=float(doc_val),
                     difference_value=float(diff),
                 ))
+
+
+def _conf_cfop_cst(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    findings: list[Finding],
+) -> None:
+    """Valida compatibilidade CFOP × CST para cada registro C190."""
+    rules = db.query(CfopCstRule).filter(CfopCstRule.is_active == True).all()
+    if not rules:
+        return
+
+    c190_rows = (
+        db.query(EfdC190Analytics)
+        .filter(EfdC190Analytics.efd_file_id == efd_file_id)
+        .all()
+    )
+    if not c190_rows:
+        return
+
+    # Determina direção pelo CFOP
+    def op_type(cfop: str | None) -> str:
+        if not cfop:
+            return "ambos"
+        return "entrada" if cfop[0] in ("1", "2", "3") else "saida"
+
+    def matches_pattern(cfop: str, pattern: str) -> bool:
+        if pattern.endswith("%"):
+            return cfop.startswith(pattern[:-1])
+        return cfop == pattern
+
+    for c190 in c190_rows:
+        cfop = (c190.cfop or "").strip()
+        cst = (c190.cst_icms or "").strip()
+        if not cfop or not cst:
+            continue
+
+        direction = op_type(cfop)
+
+        for rule in rules:
+            if rule.operation_type not in (direction, "ambos"):
+                continue
+            if not matches_pattern(cfop, rule.cfop_pattern):
+                continue
+
+            # Verifica CSTs proibidos
+            if rule.disallowed_cst:
+                bad = {c.strip() for c in rule.disallowed_cst.split(",")}
+                if cst in bad:
+                    findings.append(Finding(
+                        rule_code="CONF-CFOP-CST",
+                        severity=rule.severity,
+                        finding_type="cfop_cst_incompativel",
+                        title=f"CFOP {cfop} com CST {cst} — combinação incompatível",
+                        description=rule.description,
+                        register_code="C190",
+                        field_name="cst_icms",
+                        cfop=cfop,
+                        cst=cst,
+                        tax_type="icms",
+                        operation_type=direction,
+                    ))
+
+            # Verifica CSTs obrigatórios (allowed = exclusivo)
+            if rule.allowed_cst:
+                allowed = {c.strip() for c in rule.allowed_cst.split(",")}
+                if cst not in allowed:
+                    findings.append(Finding(
+                        rule_code="CONF-CFOP-CST",
+                        severity=rule.severity,
+                        finding_type="cfop_cst_incompativel",
+                        title=f"CFOP {cfop} com CST {cst} — CST fora do permitido ({rule.allowed_cst})",
+                        description=rule.description,
+                        register_code="C190",
+                        field_name="cst_icms",
+                        cfop=cfop,
+                        cst=cst,
+                        tax_type="icms",
+                        operation_type=direction,
+                    ))
 
 
 def _conf_c190(
@@ -643,6 +738,95 @@ def _conf_pr_adjustments(
                 register_code="E111/E112",
                 field_name="cod_aj_apur",
             ))
+
+
+def _conf_cad_001(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    findings: list[Finding],
+) -> None:
+    """REGRA-CAD-001: C100 referencia COD_PART que não existe no registro 0150."""
+    known_parts = {
+        r.cod_part
+        for r in db.query(EfdBloco0Part.cod_part)
+        .filter(EfdBloco0Part.efd_file_id == efd_file_id)
+        .all()
+        if r.cod_part
+    }
+
+    if not known_parts:
+        return
+
+    missing = (
+        db.query(EfdC100Doc.cod_part)
+        .filter(
+            EfdC100Doc.efd_file_id == efd_file_id,
+            EfdC100Doc.cod_part.isnot(None),
+            EfdC100Doc.cod_part.notin_(known_parts),
+        )
+        .distinct()
+        .all()
+    )
+
+    for (cod_part,) in missing:
+        findings.append(Finding(
+            rule_code="REGRA-CAD-001",
+            severity="alerta",
+            finding_type="participante_nao_cadastrado",
+            title=f"Participante '{cod_part}' usado em C100 não está cadastrado no 0150",
+            description=(
+                f"O código de participante '{cod_part}' aparece em documentos fiscais (C100) "
+                "mas não foi encontrado na tabela de participantes (registro 0150) do arquivo EFD."
+            ),
+            register_code="C100",
+            field_name="cod_part",
+        ))
+
+
+def _conf_part_001(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    findings: list[Finding],
+) -> None:
+    """REGRA-PART-001: C190 referencia COD_ITEM via C100 que não existe no registro 0200."""
+    known_items = {
+        r.cod_item
+        for r in db.query(EfdBloco0Item.cod_item)
+        .filter(EfdBloco0Item.efd_file_id == efd_file_id)
+        .all()
+        if r.cod_item
+    }
+
+    if not known_items:
+        return
+
+    # C190 não tem cod_item diretamente — verificamos via tabela de itens
+    # A validação mais prática é checar E113 (que tem cod_item) contra 0200
+    from app.models.pr_adjustment import EfdE113AdjustmentDoc
+    missing = (
+        db.query(EfdE113AdjustmentDoc.cod_item)
+        .filter(
+            EfdE113AdjustmentDoc.efd_file_id == efd_file_id,
+            EfdE113AdjustmentDoc.cod_item.isnot(None),
+            EfdE113AdjustmentDoc.cod_item.notin_(known_items),
+        )
+        .distinct()
+        .all()
+    )
+
+    for (cod_item,) in missing:
+        findings.append(Finding(
+            rule_code="REGRA-PART-001",
+            severity="alerta",
+            finding_type="item_nao_cadastrado",
+            title=f"Item '{cod_item}' referenciado em E113 não está cadastrado no 0200",
+            description=(
+                f"O código de item '{cod_item}' aparece em registros E113 "
+                "mas não foi encontrado na tabela de itens (registro 0200) do arquivo EFD."
+            ),
+            register_code="E113",
+            field_name="cod_item",
+        ))
 
 
 def _save_findings(

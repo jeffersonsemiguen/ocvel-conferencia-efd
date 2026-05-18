@@ -2,15 +2,19 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
+from app.models.correction import CorrectionSuggestion
 from app.models.efd_file import EfdFile
 from app.models.fiscal_period import FiscalPeriod
 from app.models.validation import ValidationFinding, ValidationRun
 from app.services.conference.engine import run_conference
 
-router = APIRouter(prefix="/api/v1", tags=["validation"])
+router = APIRouter(dependencies=[Depends(get_current_user)], prefix="/api/v1", tags=["validation"])
 
 
 @router.post(
@@ -107,6 +111,42 @@ def get_findings(
         ValidationFinding.difference_value.desc().nullslast(),
     ).all()
     return [_finding_to_dict(f) for f in rows]
+
+
+@router.get("/validation-runs/{run_id}/export-xlsx")
+def export_xlsx(run_id: uuid.UUID, db: Session = Depends(get_db)):
+    run = _get_run(db, run_id)
+
+    period = db.query(FiscalPeriod).filter(FiscalPeriod.id == run.fiscal_period_id).first()
+    efd_file = db.query(EfdFile).filter(EfdFile.id == run.efd_file_id).first()
+    if not period or not efd_file:
+        raise HTTPException(404, "Dados da competência ou arquivo não encontrados")
+
+    findings = (
+        db.query(ValidationFinding)
+        .filter(ValidationFinding.validation_run_id == run_id)
+        .order_by(ValidationFinding.severity, ValidationFinding.difference_value.desc().nullslast())
+        .all()
+    )
+
+    # Sugestões geradas a partir dos findings desta run
+    finding_ids = [f.id for f in findings]
+    suggestions = (
+        db.query(CorrectionSuggestion)
+        .filter(CorrectionSuggestion.finding_id.in_(finding_ids))
+        .order_by(CorrectionSuggestion.line_number)
+        .all()
+    )
+
+    from app.services.report.xlsx_exporter import generate_xlsx
+    xlsx_bytes = generate_xlsx(run, findings, suggestions, period, efd_file)
+
+    filename = f"fiscalcheck_{period.year}{period.month:02d}_{run.started_at.strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/validation-findings/{finding_id}/acknowledge")

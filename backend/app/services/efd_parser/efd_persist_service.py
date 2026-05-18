@@ -8,6 +8,7 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from app.models.efd_bloco0 import EfdBloco0Item, EfdBloco0Part
 from app.models.efd_c100 import EfdC100Doc
 from app.models.efd_c190 import EfdC190Analytics
 from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
@@ -153,6 +154,42 @@ def persist_structured_records(
             vl_sd_ipi=r.vl_sd_ipi,
         ))
 
+    for r in result.bloco0_part_records:
+        db.add(EfdBloco0Part(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            cod_part=r.cod_part,
+            nome=r.nome,
+            cod_pais=r.cod_pais,
+            cnpj=r.cnpj,
+            cpf=r.cpf,
+            ie=r.ie,
+            cod_mun=r.cod_mun,
+            suframa=r.suframa,
+            end=r.end,
+            num=r.num,
+            compl=r.compl,
+            bairro=r.bairro,
+        ))
+
+    for r in result.bloco0_item_records:
+        db.add(EfdBloco0Item(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            cod_item=r.cod_item,
+            descr_item=r.descr_item,
+            cod_barra=r.cod_barra,
+            cod_ant_item=r.cod_ant_item,
+            unid_inv=r.unid_inv,
+            tipo_item=r.tipo_item,
+            cod_ncm=r.cod_ncm,
+            ex_ipi=r.ex_ipi,
+            cod_gen=r.cod_gen,
+            cod_lst=r.cod_lst,
+            aliq_icms=r.aliq_icms,
+            cest=r.cest,
+        ))
+
     db.flush()
 
 
@@ -189,6 +226,8 @@ def run_full_parse(db: Session, efd_file: EfdFile, stored_path: str) -> None:
 
 def _clear_existing(db: Session, efd_file_id: uuid.UUID) -> None:
     for model in (
+        EfdBloco0Part,
+        EfdBloco0Item,
         EfdC100Doc,
         EfdC190Analytics,
         EfdE112AdjustmentInfo,

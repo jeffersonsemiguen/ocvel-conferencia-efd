@@ -9,6 +9,18 @@ export default function Home() {
 
         <div className="space-y-3">
           <a
+            href="/dashboard"
+            className="flex items-center justify-between p-5 border rounded-lg hover:bg-accent transition-colors group"
+          >
+            <div>
+              <h2 className="text-base font-semibold">Dashboard</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Visão geral das conferências — alertas e críticos por empresa
+              </p>
+            </div>
+            <span className="text-muted-foreground group-hover:translate-x-0.5 transition-transform text-lg">→</span>
+          </a>
+          <a
             href="/empresas"
             className="flex items-center justify-between p-5 border rounded-lg hover:bg-accent transition-colors group"
           >
@@ -16,6 +28,18 @@ export default function Home() {
               <h2 className="text-base font-semibold">Empresas</h2>
               <p className="text-sm text-muted-foreground mt-0.5">
                 Cadastre empresas e acesse as competências de cada uma
+              </p>
+            </div>
+            <span className="text-muted-foreground group-hover:translate-x-0.5 transition-transform text-lg">→</span>
+          </a>
+          <a
+            href="/admin"
+            className="flex items-center justify-between p-5 border rounded-lg hover:bg-accent transition-colors group"
+          >
+            <div>
+              <h2 className="text-base font-semibold">Administração</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Seeds de tabelas de referência (códigos de ajuste, matriz CFOP×CST)
               </p>
             </div>
             <span className="text-muted-foreground group-hover:translate-x-0.5 transition-transform text-lg">→</span>

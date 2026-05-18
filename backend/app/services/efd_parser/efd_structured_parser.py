@@ -153,6 +153,40 @@ class ParsedE113:
 
 
 @dataclass
+class Parsed0150:
+    line_number: int
+    cod_part: str | None
+    nome: str | None
+    cod_pais: str | None
+    cnpj: str | None
+    cpf: str | None
+    ie: str | None
+    cod_mun: str | None
+    suframa: str | None
+    end: str | None
+    num: str | None
+    compl: str | None
+    bairro: str | None
+
+
+@dataclass
+class Parsed0200:
+    line_number: int
+    cod_item: str | None
+    descr_item: str | None
+    cod_barra: str | None
+    cod_ant_item: str | None
+    unid_inv: str | None
+    tipo_item: str | None
+    cod_ncm: str | None
+    ex_ipi: str | None
+    cod_gen: str | None
+    cod_lst: str | None
+    aliq_icms: Decimal | None
+    cest: str | None
+
+
+@dataclass
 class EfdStructuredParseResult:
     c100_records: list[ParsedC100] = field(default_factory=list)
     c190_records: list[ParsedC190] = field(default_factory=list)
@@ -162,6 +196,8 @@ class EfdStructuredParseResult:
     e113_records: list[ParsedE113] = field(default_factory=list)
     e510_records: list[ParsedE510] = field(default_factory=list)
     e520_records: list[ParsedE520] = field(default_factory=list)
+    bloco0_part_records: list[Parsed0150] = field(default_factory=list)
+    bloco0_item_records: list[Parsed0200] = field(default_factory=list)
     total_lines: int = 0
     error: str | None = None
 
@@ -187,7 +223,17 @@ def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
 
                 rec = parts[1].strip().upper() if len(parts) > 1 else ""
 
-                if rec == "C100":
+                if rec == "0150":
+                    parsed = _parse_0150(parts, line_no)
+                    if parsed:
+                        result.bloco0_part_records.append(parsed)
+
+                elif rec == "0200":
+                    parsed = _parse_0200(parts, line_no)
+                    if parsed:
+                        result.bloco0_item_records.append(parsed)
+
+                elif rec == "C100":
                     current_c100_line = line_no
                     parsed_c100 = _parse_c100(parts, line_no)
                     if parsed_c100:
@@ -394,4 +440,46 @@ def _parse_e520(parts: list[str], line_no: int, parent: int | None) -> ParsedE52
         vl_oc_ipi=_dec(parts[6]),
         vl_sc_ipi=_dec(parts[7]),
         vl_sd_ipi=_dec(parts[8]),
+    )
+
+
+def _parse_0150(parts: list[str], line_no: int) -> Parsed0150 | None:
+    # |0150|COD_PART|NOME|COD_PAIS|CNPJ|CPF|IE|COD_MUN|SUFRAMA|END|NUM|COMPL|BAIRRO|
+    if len(parts) < 5:
+        return None
+    return Parsed0150(
+        line_number=line_no,
+        cod_part=_str(parts[2]),
+        nome=_str(parts[3]) if len(parts) > 3 else None,
+        cod_pais=_str(parts[4]) if len(parts) > 4 else None,
+        cnpj=_str(parts[5]) if len(parts) > 5 else None,
+        cpf=_str(parts[6]) if len(parts) > 6 else None,
+        ie=_str(parts[7]) if len(parts) > 7 else None,
+        cod_mun=_str(parts[8]) if len(parts) > 8 else None,
+        suframa=_str(parts[9]) if len(parts) > 9 else None,
+        end=_str(parts[10]) if len(parts) > 10 else None,
+        num=_str(parts[11]) if len(parts) > 11 else None,
+        compl=_str(parts[12]) if len(parts) > 12 else None,
+        bairro=_str(parts[13]) if len(parts) > 13 else None,
+    )
+
+
+def _parse_0200(parts: list[str], line_no: int) -> Parsed0200 | None:
+    # |0200|COD_ITEM|DESCR_ITEM|COD_BARRA|COD_ANT_ITEM|UNID_INV|TIPO_ITEM|COD_NCM|EX_IPI|COD_GEN|COD_LST|ALIQ_ICMS|CEST|
+    if len(parts) < 4:
+        return None
+    return Parsed0200(
+        line_number=line_no,
+        cod_item=_str(parts[2]),
+        descr_item=_str(parts[3]) if len(parts) > 3 else None,
+        cod_barra=_str(parts[4]) if len(parts) > 4 else None,
+        cod_ant_item=_str(parts[5]) if len(parts) > 5 else None,
+        unid_inv=_str(parts[6]) if len(parts) > 6 else None,
+        tipo_item=_str(parts[7]) if len(parts) > 7 else None,
+        cod_ncm=_str(parts[8]) if len(parts) > 8 else None,
+        ex_ipi=_str(parts[9]) if len(parts) > 9 else None,
+        cod_gen=_str(parts[10]) if len(parts) > 10 else None,
+        cod_lst=_str(parts[11]) if len(parts) > 11 else None,
+        aliq_icms=_dec(parts[12]) if len(parts) > 12 else None,
+        cest=_str(parts[13]) if len(parts) > 13 else None,
     )

@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { LogOutIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { clearAuth, getUser } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
 
 const links = [
   { href: "/", label: "Início" },
@@ -11,6 +14,13 @@ const links = [
 
 export function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const user = getUser();
+
+  function handleLogout() {
+    clearAuth();
+    router.push("/login");
+  }
 
   return (
     <nav className="border-b bg-background">
@@ -30,6 +40,24 @@ export function Navbar() {
             {link.label}
           </Link>
         ))}
+
+        <div className="ml-auto flex items-center gap-3">
+          {user && (
+            <span className="text-xs text-muted-foreground">
+              {user.name}
+              <span className="ml-1 opacity-60">({user.role})</span>
+            </span>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-muted-foreground"
+            onClick={handleLogout}
+          >
+            <LogOutIcon className="w-3.5 h-3.5 mr-1" />
+            Sair
+          </Button>
+        </div>
       </div>
     </nav>
   );

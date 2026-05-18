@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
 from app.models.efd_c190 import EfdC190Analytics
 from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
 from app.models.efd_e510_e520 import EfdE510IpiConsolidation, EfdE520IpiApuracao
@@ -14,7 +16,7 @@ from app.models.fiscal_period import FiscalPeriod
 from app.schemas.efd_file import EfdFileResponse
 from app.services.efd_parser.efd_persist_service import run_full_parse
 
-router = APIRouter(prefix="/api/v1", tags=["efd-files"])
+router = APIRouter(dependencies=[Depends(get_current_user)], prefix="/api/v1", tags=["efd-files"])
 
 
 @router.post(

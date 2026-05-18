@@ -11,6 +11,8 @@ from app.models.apuracao_reference import ApuracaoReferenceValue
 from app.models.validation import ValidationRun, ValidationFinding
 from app.models.correction import CorrectionSuggestion, CorrectedFile, CorrectionLog
 from app.models.pr_adjustment import PrAdjustmentCode, EfdE112AdjustmentInfo, EfdE113AdjustmentDoc
+from app.models.cfop_cst_rule import CfopCstRule
+from app.models.efd_bloco0 import EfdBloco0Part, EfdBloco0Item
 
 __all__ = [
     "Company", "User", "FiscalPeriod", "EfdFile",
