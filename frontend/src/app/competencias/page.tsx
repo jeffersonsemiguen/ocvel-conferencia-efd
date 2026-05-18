@@ -73,17 +73,7 @@ function UploadEfdDialog({
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/fiscal-periods/${period.id}/efd-files`,
-        { method: "POST", body: formData }
-      );
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail ?? "Erro no upload");
-      }
-
-      const efdFile: EfdFile = await res.json();
+      const efdFile = await api.upload<EfdFile>(`/api/v1/fiscal-periods/${period.id}/efd-files`, formData);
       onUploaded(efdFile);
       setOpen(false);
 

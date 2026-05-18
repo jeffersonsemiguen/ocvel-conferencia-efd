@@ -265,9 +265,7 @@ function EfdTab({ period }: { period: FiscalPeriod }) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${API_BASE}/api/v1/fiscal-periods/${period.id}/efd-files`, { method: "POST", body: form });
-      if (!res.ok) throw new Error((await res.json()).detail ?? res.statusText);
-      const efd: EfdFile = await res.json();
+      const efd = await api.upload<EfdFile>(`/api/v1/fiscal-periods/${period.id}/efd-files`, form);
       setFiles(p => [...p, efd]);
       toast.success(efd.parse_status === "parsed"
         ? `Processado — ${efd.total_lines?.toLocaleString()} linhas`
@@ -365,9 +363,7 @@ function PdfTab({ period }: { period: FiscalPeriod }) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${API_BASE}/api/v1/fiscal-periods/${period.id}/pdf-apuracao-files`, { method: "POST", body: form });
-      if (!res.ok) throw new Error((await res.json()).detail ?? res.statusText);
-      const pdf: PdfApuracaoFile = await res.json();
+      const pdf = await api.upload<PdfApuracaoFile>(`/api/v1/fiscal-periods/${period.id}/pdf-apuracao-files`, form);
       setPdfs(p => [...p, pdf]);
       if (pdf.extraction_status === "extracted") {
         toast.success(`PDF processado — ${pdf.total_pages} página(s), confiança ${pdf.average_confidence?.toFixed(0)}%`);
@@ -509,12 +505,10 @@ function ApuracaoTab({ period }: { period: FiscalPeriod }) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(
-        `${API_BASE}/api/v1/fiscal-periods/${period.id}/apuracao-reference/import-spreadsheet`,
-        { method: "POST", body: form }
+      const data = await api.upload<{ rows_imported: number; rows_skipped: number; errors: string[] }>(
+        `/api/v1/fiscal-periods/${period.id}/apuracao-reference/import-spreadsheet`,
+        form
       );
-      const data = await res.json();
-      if (!res.ok) throw new Error(Array.isArray(data.detail) ? data.detail.join("; ") : data.detail);
       toast.success(`${data.rows_imported} linha(s) importada(s)${data.rows_skipped > 0 ? `, ${data.rows_skipped} ignorada(s)` : ""}`);
       if (data.errors?.length) toast.warning(`Avisos: ${data.errors.join("; ")}`);
       reload();
@@ -538,7 +532,7 @@ function ApuracaoTab({ period }: { period: FiscalPeriod }) {
 
   async function deleteValue(id: string) {
     try {
-      await fetch(`${API_BASE}/api/v1/apuracao-reference-values/${id}`, { method: "DELETE" });
+      await api.delete(`/api/v1/apuracao-reference-values/${id}`);
       setValues(v => v.filter(r => r.id !== id));
     } catch {
       toast.error("Erro ao remover valor");

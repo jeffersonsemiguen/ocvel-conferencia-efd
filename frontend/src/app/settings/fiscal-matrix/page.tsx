@@ -22,9 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getToken } from "@/lib/auth";
+import { api } from "@/lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface CfopCstRule {
   id: string;
@@ -95,13 +94,7 @@ export default function FiscalMatrixPage() {
       if (filterOperationType && filterOperationType !== "all") params.set("operation_type", filterOperationType);
       if (filterRuleBehavior && filterRuleBehavior !== "all") params.set("rule_behavior", filterRuleBehavior);
 
-      const token = getToken();
-      const res = await fetch(
-        `${API_BASE}/api/v1/fiscal-matrix/cfop-cst-rules?${params.toString()}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!res.ok) throw new Error(res.statusText);
-      const data = await res.json();
+      const data = await api.get<CfopCstRule[]>(`/api/v1/fiscal-matrix/cfop-cst-rules?${params.toString()}`);
       setRules(data);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Erro ao carregar regras");
@@ -121,19 +114,7 @@ export default function FiscalMatrixPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/api/v1/fiscal-matrix/cfop-cst/import`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      const data: ImportResult = await res.json();
-
-      if (!res.ok) {
-        toast.error(`Erro na importação: ${JSON.stringify(data)}`);
-        return;
-      }
+      const data = await api.upload<ImportResult>(`/api/v1/fiscal-matrix/cfop-cst/import`, formData);
 
       if (data.errors && data.errors.length > 0) {
         toast.warning(

@@ -15,9 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getToken } from "@/lib/auth";
+import { api } from "@/lib/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface PrCode {
   id: string;
@@ -69,13 +68,7 @@ export default function PrAdjustmentCodesPage() {
       if (filterTableType) params.set("table_type", filterTableType);
       if (filterValidOn) params.set("valid_on", filterValidOn);
 
-      const token = getToken();
-      const res = await fetch(
-        `${API_BASE}/api/v1/pr-adjustment-codes/?${params.toString()}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!res.ok) throw new Error(res.statusText);
-      const data = await res.json();
+      const data = await api.get<PrCode[]>(`/api/v1/pr-adjustment-codes/?${params.toString()}`);
       setCodes(data);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Erro ao carregar códigos");
@@ -95,19 +88,7 @@ export default function PrAdjustmentCodesPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/api/v1/pr-adjustment-codes/import`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      const data: ImportResult = await res.json();
-
-      if (!res.ok) {
-        toast.error(`Erro na importação: ${JSON.stringify(data)}`);
-        return;
-      }
+      const data = await api.upload<ImportResult>(`/api/v1/pr-adjustment-codes/import`, formData);
 
       if (data.records_failed > 0) {
         toast.warning(
