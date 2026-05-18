@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { Users, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 interface SeedResult {
   inserted: number;
@@ -36,40 +40,67 @@ function SeedCard({
   }
 
   return (
-    <div className="border rounded-lg p-5 space-y-3">
-      <div>
-        <h2 className="font-semibold text-base">{title}</h2>
-        <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
-      </div>
-      <button
-        onClick={handleSeed}
-        disabled={status === "loading"}
-        className="px-4 py-2 text-sm rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
-      >
-        {status === "loading" ? "Carregando..." : "Executar Seed"}
-      </button>
-      {status === "ok" && result && (
-        <p className="text-sm text-green-600">
-          Concluído — {result.inserted} inseridos, {result.updated} atualizados ({result.total} total)
-        </p>
-      )}
-      {status === "error" && (
-        <p className="text-sm text-red-600">Erro: {error}</p>
-      )}
-    </div>
+    <Card>
+      <CardContent className="py-4 px-5 space-y-3">
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+        </div>
+        <Button size="sm" onClick={handleSeed} disabled={status === "loading"}>
+          {status === "loading" ? "Carregando..." : "Executar Seed"}
+        </Button>
+        {status === "ok" && result && (
+          <p className="text-xs text-green-700 dark:text-green-400">
+            Concluído — {result.inserted} inseridos, {result.updated} atualizados ({result.total} total)
+          </p>
+        )}
+        {status === "error" && (
+          <p className="text-xs text-destructive">Erro: {error}</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 export default function AdminPage() {
   return (
-    <main className="min-h-screen bg-background p-8">
-      <div className="max-w-2xl mx-auto pt-10">
-        <h1 className="text-2xl font-bold mb-1">Administração</h1>
-        <p className="text-muted-foreground text-sm mb-8">
-          Seeds e configurações do sistema (somente administradores)
+    <main className="max-w-2xl mx-auto px-6 pt-10 pb-20">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold tracking-tight">Administração</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Configurações e seeds do sistema
         </p>
+      </div>
 
-        <div className="space-y-4">
+      {/* Acesso rápido */}
+      <div className="mb-8">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          Acesso rápido
+        </p>
+        <Link href="/admin/usuarios">
+          <Card className="hover:bg-accent transition-colors cursor-pointer group">
+            <CardContent className="flex items-center gap-4 py-4 px-5">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <Users className="w-4 h-4" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Usuários</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Criar e gerenciar usuários com acesso ao sistema
+                </p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+
+      {/* Seeds */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          Seeds de tabelas de referência
+        </p>
+        <div className="space-y-3">
           <SeedCard
             title="Tabela de Códigos de Ajuste PR (Tabela 5.1.1)"
             description="Carrega ou atualiza os 230 códigos de ajuste do Paraná com flags de E112/E113."
@@ -81,12 +112,10 @@ export default function AdminPage() {
             endpoint="/api/v1/cfop-cst-rules/seed"
           />
         </div>
+      </div>
 
-        <div className="mt-10">
-          <a href="/" className="text-sm text-muted-foreground hover:underline">
-            ← Voltar ao início
-          </a>
-        </div>
+      <div className="mt-10">
+        <a href="/" className="text-sm text-muted-foreground hover:underline">← Início</a>
       </div>
     </main>
   );
