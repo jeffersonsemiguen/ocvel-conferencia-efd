@@ -11,6 +11,7 @@ from app.models.user import User
 from app.models.correction import CorrectionSuggestion
 from app.models.efd_file import EfdFile
 from app.models.fiscal_period import FiscalPeriod
+from app.models.pr_adjustment import PrAdjustmentValidationResult
 from app.models.validation import ValidationFinding, ValidationRun
 from app.services.conference.engine import run_conference
 
@@ -147,6 +148,31 @@ def export_xlsx(run_id: uuid.UUID, db: Session = Depends(get_db)):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/validation-runs/{run_id}/pr-adjustment-results")
+def get_pr_adjustment_results(run_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Lista os resultados detalhados de validação de códigos PR para uma run."""
+    _get_run(db, run_id)
+    results = (
+        db.query(PrAdjustmentValidationResult)
+        .filter(PrAdjustmentValidationResult.validation_run_id == run_id)
+        .order_by(PrAdjustmentValidationResult.line_number)
+        .all()
+    )
+    return [
+        {
+            "id": str(r.id),
+            "register_code": r.register_code,
+            "line_number": r.line_number,
+            "adjustment_code": r.adjustment_code,
+            "validation_rule_code": r.validation_rule_code,
+            "status": r.status,
+            "severity": r.severity,
+            "message": r.message,
+        }
+        for r in results
+    ]
 
 
 @router.post("/validation-findings/{finding_id}/acknowledge")

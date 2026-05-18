@@ -33,7 +33,7 @@ from app.models.efd_c190 import EfdC190Analytics
 from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
 from app.models.efd_e510_e520 import EfdE510IpiConsolidation, EfdE520IpiApuracao
 from app.models.cfop_cst_rule import CfopCstRule
-from app.models.pr_adjustment import EfdE112AdjustmentInfo, EfdE113AdjustmentDoc, PrAdjustmentCode
+from app.models.pr_adjustment import EfdE113AdjustmentDoc
 from app.models.validation import ValidationFinding, ValidationRun
 
 
@@ -644,106 +644,22 @@ def _conf_pr_adjustments(
     findings: list[Finding],
 ) -> None:
     """
-    Valida os registros E111 contra a tabela de códigos de ajuste do PR:
-      REGRA-PR-001 — código inexistente na tabela
-      REGRA-PR-002 — código exige E113 mas nenhum E113 filho foi informado
-      REGRA-PR-003 — código exige E112 mas nenhum E112 filho foi informado
+    Valida os registros E111 contra a tabela de códigos de ajuste do PR.
+    Delegado ao pr_adjustment_validation_service (Sprint 5).
     """
-    e111_list = (
-        db.query(EfdE111IcmsAdjustment)
-        .filter(EfdE111IcmsAdjustment.efd_file_id == efd_file_id)
-        .all()
-    )
+    from app.models.efd_file import EfdFile
+    from app.models.fiscal_period import FiscalPeriod
 
-    if not e111_list:
+    efd_file = db.query(EfdFile).filter(EfdFile.id == efd_file_id).first()
+    if not efd_file:
+        return
+    fiscal_period = db.query(FiscalPeriod).filter(FiscalPeriod.id == efd_file.fiscal_period_id).first()
+    if not fiscal_period:
         return
 
-    # Verifica se há tabela de códigos PR carregada
-    total_pr_codes = db.query(PrAdjustmentCode).filter(PrAdjustmentCode.is_active == True).count()
-    if total_pr_codes == 0:
-        findings.append(Finding(
-            rule_code="CONF-PR-SEM-TABELA",
-            severity="alerta",
-            finding_type="ausencia_referencia",
-            title="Tabela de códigos de ajuste PR não carregada",
-            description=(
-                "Não é possível validar os códigos E111 pois a tabela 5.1.1 do PR "
-                "não foi importada. Use o endpoint POST /api/v1/pr-adjustment-codes/seed-upload."
-            ),
-            register_code="E111",
-        ))
-        return
-
-    # Cache de E113/E112 por parent_e111_line_number
-    e113_by_parent: dict[int, list] = {}
-    for r in db.query(EfdE113AdjustmentDoc).filter(EfdE113AdjustmentDoc.efd_file_id == efd_file_id).all():
-        if r.parent_e111_line_number:
-            e113_by_parent.setdefault(r.parent_e111_line_number, []).append(r)
-
-    e112_by_parent: dict[int, list] = {}
-    for r in db.query(EfdE112AdjustmentInfo).filter(EfdE112AdjustmentInfo.efd_file_id == efd_file_id).all():
-        if r.parent_e111_line_number:
-            e112_by_parent.setdefault(r.parent_e111_line_number, []).append(r)
-
-    for e111 in e111_list:
-        code = (e111.cod_aj_apur or "").strip().upper()
-        if not code:
-            continue
-
-        pr_code = db.query(PrAdjustmentCode).filter(
-            PrAdjustmentCode.code == code,
-            PrAdjustmentCode.is_active == True,
-        ).first()
-
-        # REGRA-PR-001: código inexistente
-        if pr_code is None:
-            findings.append(Finding(
-                rule_code="REGRA-PR-001",
-                severity="critico",
-                finding_type="codigo_invalido",
-                title=f"Código de ajuste E111 inexistente: {code}",
-                description=(
-                    f"O código '{code}' informado no registro E111 (linha {e111.line_number}) "
-                    "não existe na tabela 5.1.1 vigente do Paraná."
-                ),
-                register_code="E111",
-            ))
-            continue
-
-        has_e113 = e111.line_number in e113_by_parent
-        has_e112 = e111.line_number in e112_by_parent
-
-        # REGRA-PR-002: E113 obrigatório ausente
-        if pr_code.requires_e113 and not has_e113:
-            findings.append(Finding(
-                rule_code="REGRA-PR-002",
-                severity="critico",
-                finding_type="registro_obrigatorio_ausente",
-                title=f"E111 com código {code} exige E113 mas nenhum foi informado",
-                description=(
-                    f"O código '{code}' ({pr_code.description}) exige que sejam informados "
-                    f"registros E113 com os documentos fiscais relacionados ao ajuste. "
-                    f"Nenhum E113 filho foi encontrado para o E111 da linha {e111.line_number}."
-                ),
-                register_code="E111/E113",
-                field_name="cod_aj_apur",
-            ))
-
-        # REGRA-PR-003: E112 obrigatório ausente
-        if pr_code.requires_e112 and not has_e112:
-            findings.append(Finding(
-                rule_code="REGRA-PR-003",
-                severity="critico",
-                finding_type="registro_obrigatorio_ausente",
-                title=f"E111 com código {code} exige E112 mas nenhum foi informado",
-                description=(
-                    f"O código '{code}' ({pr_code.description}) exige que sejam informadas "
-                    f"informações adicionais no registro E112. "
-                    f"Nenhum E112 filho foi encontrado para o E111 da linha {e111.line_number}."
-                ),
-                register_code="E111/E112",
-                field_name="cod_aj_apur",
-            ))
+    from app.services.pr_rules.pr_adjustment_validation_service import run_pr_validation
+    new_findings = run_pr_validation(db, efd_file_id, fiscal_period, efd_file.fiscal_period_id)
+    findings.extend(new_findings)
 
 
 def _conf_bloco_h(
