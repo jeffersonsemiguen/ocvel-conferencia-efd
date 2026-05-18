@@ -40,6 +40,12 @@ export default function LoginPage() {
       const meRes = await fetch(`${API_BASE}/auth/me`, {
         headers: { Authorization: `Bearer ${access_token}` },
       });
+
+      if (!meRes.ok) {
+        const errData = await meRes.json().catch(() => ({}));
+        throw new Error(`Erro ao carregar usuário: ${errData.detail ?? meRes.statusText}`);
+      }
+
       const user = await meRes.json();
 
       saveAuth(access_token, { user_id: user.id, name: user.name, email: user.email, role: user.role });

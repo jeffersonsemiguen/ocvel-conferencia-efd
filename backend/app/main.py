@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.database import Base, engine
 from app.routers import (
     apuracao_reference, auth, cfop_cst, companies, correction, dashboard,
     efd_files, fiscal_matrix, fiscal_periods, pdf_apuracao, pr_adjustment, validation,
     period_analytics,
 )
+from app import models  # Import all models so they're registered with Base
 
 app = FastAPI(
     title="FiscalCheck EFD ICMS/IPI",
@@ -13,9 +15,11 @@ app = FastAPI(
     version="0.1.0",
 )
 
+Base.metadata.create_all(bind=engine)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
