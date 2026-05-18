@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   FileTextIcon, UploadIcon, PlusIcon, CheckIcon,
   ChevronDownIcon, ChevronRightIcon, AlertCircleIcon, PlayIcon,
-  DownloadIcon, WandSparklesIcon, XIcon,
+  DownloadIcon, WandSparklesIcon, XIcon, RefreshCwIcon, ClockIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,201 @@ import type {
   EfdFile, FiscalPeriod, PdfApuracaoFile, PdfExtractedPage,
   ValidationFinding, ValidationRun,
 } from "@/lib/types";
+
+// ─── Tipos Sprint 8 ───────────────────────────────────────────────────────────
+
+interface RiskScoreResult {
+  score: number;
+  risk_level: "low" | "moderate" | "high" | "critical";
+  breakdown: { reason: string; points: number }[];
+  critical_count: number;
+  warning_count: number;
+  snapshot_id?: string;
+  calculated_at?: string;
+}
+
+interface PeriodDashboard {
+  period: { id: string; year: number; month: number; status: string };
+  company: { id: string; name: string; cnpj: string };
+  files: { efd_count: number; pdf_count: number; corrected_count: number; latest_efd_status: string | null };
+  findings: { critical_count: number; warning_count: number; total: number; last_run_at: string | null };
+  suggestions: { pending: number; approved: number; rejected: number; applied: number; total: number };
+  risk: RiskScoreResult;
+  next_action: string;
+}
+
+interface PeriodEvent {
+  id: string;
+  event_type: string;
+  event_title: string;
+  event_description: string | null;
+  created_at: string;
+}
+
+// ─── RiskScoreCard ────────────────────────────────────────────────────────────
+
+function riskColor(risk: string): string {
+  switch (risk) {
+    case "low":      return "text-green-600";
+    case "moderate": return "text-yellow-600";
+    case "high":     return "text-orange-500";
+    case "critical": return "text-destructive";
+    default:         return "text-muted-foreground";
+  }
+}
+
+function riskBgColor(score: number): string {
+  if (score <= 20) return "bg-green-50 border-green-200 dark:bg-green-950/20";
+  if (score <= 50) return "bg-yellow-50 border-yellow-200 dark:bg-yellow-950/20";
+  if (score <= 80) return "bg-orange-50 border-orange-200 dark:bg-orange-950/20";
+  return "bg-red-50 border-red-200 dark:bg-red-950/20";
+}
+
+const RISK_LABELS: Record<string, string> = {
+  low: "Baixo", moderate: "Moderado", high: "Alto", critical: "Crítico",
+};
+
+function RiskScoreCard({ periodId }: { periodId: string }) {
+  const [result, setResult] = useState<RiskScoreResult | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const calculate = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await api.post<RiskScoreResult>(
+        `/api/v1/fiscal-periods/${periodId}/risk-score/calculate`, {}
+      );
+      setResult(data);
+    } catch {
+      toast.error("Erro ao calcular score de risco");
+    } finally {
+      setLoading(false);
+    }
+  }, [periodId]);
+
+  useEffect(() => { calculate(); }, [calculate]);
+
+  if (!result && !loading) return null;
+
+  return (
+    <div className={`rounded-lg border p-4 ${result ? riskBgColor(result.score) : "bg-muted/30"}`}>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Score de Risco</p>
+        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={calculate} disabled={loading}>
+          <RefreshCwIcon className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />
+          Recalcular
+        </Button>
+      </div>
+      {loading && !result ? (
+        <p className="text-sm text-muted-foreground">Calculando...</p>
+      ) : result ? (
+        <div className="flex items-end gap-3">
+          <span className={`text-4xl font-bold tabular-nums ${riskColor(result.risk_level)}`}>
+            {result.score}
+          </span>
+          <div className="mb-1">
+            <span className="text-sm text-muted-foreground">/100</span>
+            <div className="mt-0.5">
+              <Badge
+                variant={result.risk_level === "critical" ? "destructive" : "secondary"}
+                className="text-xs"
+              >
+                {RISK_LABELS[result.risk_level] ?? result.risk_level}
+              </Badge>
+            </div>
+          </div>
+          {result.breakdown.length > 0 && (
+            <div className="ml-auto text-right text-xs text-muted-foreground space-y-0.5">
+              <p>{result.critical_count} crítico(s) · {result.warning_count} alerta(s)</p>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── NextActionCard ───────────────────────────────────────────────────────────
+
+function NextActionCard({ periodId }: { periodId: string }) {
+  const [dashboard, setDashboard] = useState<PeriodDashboard | null>(null);
+
+  useEffect(() => {
+    api.get<PeriodDashboard>(`/api/v1/fiscal-periods/${periodId}/dashboard`)
+      .then(setDashboard)
+      .catch(() => { /* silently ignore on first load */ });
+  }, [periodId]);
+
+  if (!dashboard) return null;
+
+  const { findings, suggestions, next_action } = dashboard;
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Próxima Ação</p>
+      <p className="text-base font-medium">{next_action}</p>
+      <div className="flex gap-4 text-sm text-muted-foreground flex-wrap">
+        {findings.critical_count > 0 && (
+          <span className="text-destructive font-medium">{findings.critical_count} crítico(s)</span>
+        )}
+        {findings.warning_count > 0 && (
+          <span className="text-orange-500">{findings.warning_count} alerta(s)</span>
+        )}
+        {suggestions.pending > 0 && (
+          <span className="text-yellow-600">{suggestions.pending} sugestão(ões) pendente(s)</span>
+        )}
+        {findings.critical_count === 0 && findings.warning_count === 0 && suggestions.pending === 0 && (
+          <span className="text-green-600">Sem pendências críticas</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── TimelineCard ─────────────────────────────────────────────────────────────
+
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  efd_processed: "EFD Processada",
+  validation_run: "Conferência",
+  corrected_file_generated: "TXT Corrigido",
+  manual: "Evento Manual",
+};
+
+function TimelineCard({ periodId }: { periodId: string }) {
+  const [events, setEvents] = useState<PeriodEvent[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    api.get<PeriodEvent[]>(`/api/v1/fiscal-periods/${periodId}/events?limit=10`)
+      .then(data => { setEvents(data); setLoaded(true); })
+      .catch(() => setLoaded(true));
+  }, [periodId]);
+
+  if (!loaded || events.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        Histórico de Atividades
+      </p>
+      <div className="space-y-2">
+        {events.map(ev => (
+          <div key={ev.id} className="flex items-start gap-2 text-sm">
+            <ClockIcon className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="font-medium">{EVENT_TYPE_LABELS[ev.event_type] ?? ev.event_type}</span>
+              {" — "}
+              <span className="text-muted-foreground">{ev.event_title}</span>
+            </div>
+            <span className="text-xs text-muted-foreground shrink-0">
+              {new Date(ev.created_at).toLocaleDateString("pt-BR")}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const MESES = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
@@ -1115,6 +1310,15 @@ export default function CompetenciaDetailPage() {
         <p className="text-sm text-muted-foreground mt-0.5">
           {company.name} · CNPJ {company.cnpj}
         </p>
+      </div>
+
+      {/* Sprint 8: Score de Risco + Próxima Ação + Timeline */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <RiskScoreCard periodId={period.id} />
+        <NextActionCard periodId={period.id} />
+      </div>
+      <div className="mb-6">
+        <TimelineCard periodId={period.id} />
       </div>
 
       <Tabs defaultValue="efd">

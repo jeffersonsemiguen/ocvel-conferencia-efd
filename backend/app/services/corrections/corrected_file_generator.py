@@ -177,4 +177,25 @@ def generate_corrected_file(
         sug.status = "applied"
 
     db.flush()
+
+    # Registrar evento de arquivo corrigido gerado
+    try:
+        from app.services.events.event_service import log_event
+        from app.models.fiscal_period import FiscalPeriod as _FiscalPeriod
+        if efd_file.fiscal_period_id:
+            _period = db.query(_FiscalPeriod).filter(_FiscalPeriod.id == efd_file.fiscal_period_id).first()
+            if _period:
+                log_event(
+                    db=db,
+                    fiscal_period_id=efd_file.fiscal_period_id,
+                    company_id=_period.company_id,
+                    event_type="corrected_file_generated",
+                    title=f"TXT corrigido gerado — {len(applied_suggestions)} alteração(ões)",
+                    description=f"Arquivo: {filename}",
+                    related_entity_type="corrected_file",
+                    related_entity_id=corrected.id,
+                )
+    except Exception:
+        pass
+
     return corrected

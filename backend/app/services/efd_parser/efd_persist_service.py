@@ -300,6 +300,25 @@ def run_full_parse(db: Session, efd_file: EfdFile, stored_path: str) -> None:
         efd_file.parse_status = "parsed"
         efd_file.parse_error = None
 
+        # Registrar evento de EFD processada com sucesso
+        try:
+            from app.services.events.event_service import log_event
+            from app.models.fiscal_period import FiscalPeriod as _FiscalPeriod
+            _period = db.query(_FiscalPeriod).filter(_FiscalPeriod.id == efd_file.fiscal_period_id).first()
+            if _period:
+                log_event(
+                    db=db,
+                    fiscal_period_id=efd_file.fiscal_period_id,
+                    company_id=_period.company_id,
+                    event_type="efd_processed",
+                    title=f"EFD processada com sucesso — {struct_result.total_lines} linhas",
+                    description=f"Arquivo: {efd_file.original_filename}",
+                    related_entity_type="efd_file",
+                    related_entity_id=efd_file.id,
+                )
+        except Exception:
+            pass
+
     db.flush()
 
 

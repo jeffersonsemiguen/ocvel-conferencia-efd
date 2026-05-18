@@ -131,6 +131,27 @@ def run_conference(
     # Persiste findings
     _save_findings(db, run, findings)
 
+    # Registrar evento de conferência concluída
+    try:
+        from app.services.events.event_service import log_event
+        from app.models.fiscal_period import FiscalPeriod as _FiscalPeriod
+        _period = db.query(_FiscalPeriod).filter(_FiscalPeriod.id == fiscal_period_id).first()
+        if _period:
+            _total = run.total_findings
+            _crit = run.critical_count
+            log_event(
+                db=db,
+                fiscal_period_id=fiscal_period_id,
+                company_id=_period.company_id,
+                event_type="validation_run",
+                title=f"Conferência concluída — {_total} achado(s), {_crit} crítico(s)",
+                description=f"ValidationRun {run.id}: status={run.status}",
+                related_entity_type="validation_run",
+                related_entity_id=run.id,
+            )
+    except Exception:
+        pass
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Helpers de agrupamento

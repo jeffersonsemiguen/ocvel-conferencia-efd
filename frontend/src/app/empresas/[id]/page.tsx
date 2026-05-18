@@ -169,6 +169,17 @@ export default function EmpresaDetailPage() {
         </div>
       </div>
 
+      {/* Link para dashboard */}
+      <div className="mb-6">
+        <a
+          href={`/empresas/${company.id}/dashboard`}
+          className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+        >
+          Ver Dashboard de Risco
+          <ArrowRightIcon className="w-4 h-4" />
+        </a>
+      </div>
+
       {/* Competências */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Competências</h2>

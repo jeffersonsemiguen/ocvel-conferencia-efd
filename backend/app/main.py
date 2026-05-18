@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
     apuracao_reference, auth, cfop_cst, companies, correction, dashboard,
     efd_files, fiscal_matrix, fiscal_periods, pdf_apuracao, pr_adjustment, validation,
+    period_analytics,
 )
 
 app = FastAPI(
@@ -35,6 +36,7 @@ app.include_router(pr_adjustment.router)
 app.include_router(cfop_cst.router)
 app.include_router(fiscal_matrix.router)
 app.include_router(dashboard.router)
+app.include_router(period_analytics.router)
 
 
 @app.get("/health")
