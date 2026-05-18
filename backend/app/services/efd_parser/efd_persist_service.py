@@ -9,6 +9,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.models.efd_bloco0 import EfdBloco0Item, EfdBloco0Part
+from app.models.efd_bloco_h import EfdBlocoH005, EfdBlocoH010
 from app.models.efd_c100 import EfdC100Doc
 from app.models.efd_c190 import EfdC190Analytics
 from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
@@ -154,6 +155,32 @@ def persist_structured_records(
             vl_sd_ipi=r.vl_sd_ipi,
         ))
 
+    for r in result.bloco_h005_records:
+        db.add(EfdBlocoH005(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            dt_inv=r.dt_inv,
+            vl_inv=r.vl_inv,
+            mot_inv=r.mot_inv,
+        ))
+
+    for r in result.bloco_h010_records:
+        db.add(EfdBlocoH010(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            parent_h005_line_number=r.parent_h005_line_number,
+            cod_item=r.cod_item,
+            unid=r.unid,
+            qtd=r.qtd,
+            vl_unit=r.vl_unit,
+            vl_item=r.vl_item,
+            ind_prop=r.ind_prop,
+            cod_part=r.cod_part,
+            txt_compl=r.txt_compl,
+            cod_cta=r.cod_cta,
+            vl_item_ir=r.vl_item_ir,
+        ))
+
     for r in result.bloco0_part_records:
         db.add(EfdBloco0Part(
             efd_file_id=efd_file_id,
@@ -226,6 +253,8 @@ def run_full_parse(db: Session, efd_file: EfdFile, stored_path: str) -> None:
 
 def _clear_existing(db: Session, efd_file_id: uuid.UUID) -> None:
     for model in (
+        EfdBlocoH005,
+        EfdBlocoH010,
         EfdBloco0Part,
         EfdBloco0Item,
         EfdC100Doc,

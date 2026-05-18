@@ -13,6 +13,8 @@ Regras implementadas:
   REGRA-PR-001/002/003 — Códigos de ajuste PR (E111/E112/E113)
   REGRA-CAD-001      — C100 referencia participante não cadastrado no 0150
   REGRA-PART-001     — C190 referencia item não cadastrado no 0200
+  REGRA-H-001        — H005 sem itens H010 (inventário vazio)
+  REGRA-H-002        — Valor total H005 diverge da soma dos H010
 """
 from __future__ import annotations
 
@@ -25,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.models.apuracao_reference import ApuracaoReferenceValue
 from app.models.efd_bloco0 import EfdBloco0Item, EfdBloco0Part
+from app.models.efd_bloco_h import EfdBlocoH005, EfdBlocoH010
 from app.models.efd_c100 import EfdC100Doc
 from app.models.efd_c190 import EfdC190Analytics
 from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
@@ -115,6 +118,9 @@ def run_conference(
 
     # ── 8. Cadastro de itens (0200 × C190) ──────────────────────────────────
     _conf_part_001(db, efd_file_id, findings)
+
+    # ── 9. Bloco H — inventário ──────────────────────────────────────────────
+    _conf_bloco_h(db, efd_file_id, tol, findings)
 
     # Persiste findings
     _save_findings(db, run, findings)
@@ -737,6 +743,93 @@ def _conf_pr_adjustments(
                 ),
                 register_code="E111/E112",
                 field_name="cod_aj_apur",
+            ))
+
+
+def _conf_bloco_h(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    tol: Decimal,
+    findings: list[Finding],
+) -> None:
+    """
+    REGRA-H-001: H005 sem nenhum H010 filho (inventário declarado mas vazio).
+    REGRA-H-002: Valor total do H005 diverge da soma dos VL_ITEM dos H010.
+    """
+    h005_list = (
+        db.query(EfdBlocoH005)
+        .filter(EfdBlocoH005.efd_file_id == efd_file_id)
+        .order_by(EfdBlocoH005.line_number)
+        .all()
+    )
+
+    if not h005_list:
+        return
+
+    h010_list = (
+        db.query(EfdBlocoH010)
+        .filter(EfdBlocoH010.efd_file_id == efd_file_id)
+        .all()
+    )
+
+    # Agrupa H010 por parent
+    h010_by_parent: dict[int, list[EfdBlocoH010]] = {}
+    for item in h010_list:
+        if item.parent_h005_line_number is not None:
+            h010_by_parent.setdefault(item.parent_h005_line_number, []).append(item)
+
+    MOT_LABELS = {
+        "01": "Balanço de encerramento do período",
+        "02": "Mudança de forma de tributação",
+        "03": "Início de atividades",
+        "04": "Encerramento de atividades",
+        "05": "Outros",
+    }
+
+    for h005 in h005_list:
+        mot = h005.mot_inv or "?"
+        mot_label = MOT_LABELS.get(mot, f"motivo {mot}")
+        dt = h005.dt_inv or "?"
+        items = h010_by_parent.get(h005.line_number, [])
+
+        # REGRA-H-001: H005 sem H010
+        if not items:
+            findings.append(Finding(
+                rule_code="REGRA-H-001",
+                severity="critico",
+                finding_type="inventario_vazio",
+                title=f"Inventário {dt} ({mot_label}) sem itens H010",
+                description=(
+                    f"O registro H005 da linha {h005.line_number} declara um inventário "
+                    f"({mot_label}) com valor R$ {float(h005.vl_inv or 0):,.2f}, "
+                    "mas nenhum item H010 foi encontrado como filho deste registro."
+                ),
+                register_code="H005",
+                field_name="vl_inv",
+            ))
+            continue
+
+        # REGRA-H-002: soma dos H010 diverge do total H005
+        soma_items = sum(_to_dec(i.vl_item) for i in items)
+        total_h005 = _to_dec(h005.vl_inv)
+        diff = abs(soma_items - total_h005)
+
+        if diff > tol:
+            findings.append(Finding(
+                rule_code="REGRA-H-002",
+                severity="alerta",
+                finding_type="divergencia_monetaria",
+                title=f"Inventário {dt} — total H005 diverge da soma dos itens H010",
+                description=(
+                    f"H005 declara R$ {float(total_h005):,.2f} mas a soma dos {len(items)} "
+                    f"itens H010 totaliza R$ {float(soma_items):,.2f} "
+                    f"(diferença: R$ {float(diff):,.2f})."
+                ),
+                register_code="H005/H010",
+                field_name="vl_inv",
+                efd_value=float(soma_items),
+                reference_value=float(total_h005),
+                difference_value=float(diff),
             ))
 
 

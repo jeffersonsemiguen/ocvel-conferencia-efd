@@ -13,6 +13,7 @@ from app.models.correction import CorrectionSuggestion, CorrectedFile, Correctio
 from app.models.pr_adjustment import PrAdjustmentCode, EfdE112AdjustmentInfo, EfdE113AdjustmentDoc
 from app.models.cfop_cst_rule import CfopCstRule
 from app.models.efd_bloco0 import EfdBloco0Part, EfdBloco0Item
+from app.models.efd_bloco_h import EfdBlocoH005, EfdBlocoH010
 
 __all__ = [
     "Company", "User", "FiscalPeriod", "EfdFile",

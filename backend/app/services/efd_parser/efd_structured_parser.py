@@ -187,6 +187,30 @@ class Parsed0200:
 
 
 @dataclass
+class ParsedH005:
+    line_number: int
+    dt_inv: str | None
+    vl_inv: Decimal | None
+    mot_inv: str | None
+
+
+@dataclass
+class ParsedH010:
+    line_number: int
+    parent_h005_line_number: int | None
+    cod_item: str | None
+    unid: str | None
+    qtd: Decimal | None
+    vl_unit: Decimal | None
+    vl_item: Decimal | None
+    ind_prop: str | None
+    cod_part: str | None
+    txt_compl: str | None
+    cod_cta: str | None
+    vl_item_ir: Decimal | None
+
+
+@dataclass
 class EfdStructuredParseResult:
     c100_records: list[ParsedC100] = field(default_factory=list)
     c190_records: list[ParsedC190] = field(default_factory=list)
@@ -198,6 +222,8 @@ class EfdStructuredParseResult:
     e520_records: list[ParsedE520] = field(default_factory=list)
     bloco0_part_records: list[Parsed0150] = field(default_factory=list)
     bloco0_item_records: list[Parsed0200] = field(default_factory=list)
+    bloco_h005_records: list[ParsedH005] = field(default_factory=list)
+    bloco_h010_records: list[ParsedH010] = field(default_factory=list)
     total_lines: int = 0
     error: str | None = None
 
@@ -207,6 +233,7 @@ def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
     current_c100_line: int | None = None
     current_e111_line: int | None = None
     current_e500_line: int | None = None
+    current_h005_line: int | None = None
 
     try:
         with open(file_path, encoding="latin-1") as f:
@@ -264,6 +291,17 @@ def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
                     parsed = _parse_e113(parts, line_no, current_e111_line)
                     if parsed:
                         result.e113_records.append(parsed)
+
+                elif rec == "H005":
+                    current_h005_line = line_no
+                    parsed = _parse_h005(parts, line_no)
+                    if parsed:
+                        result.bloco_h005_records.append(parsed)
+
+                elif rec == "H010":
+                    parsed = _parse_h010(parts, line_no, current_h005_line)
+                    if parsed:
+                        result.bloco_h010_records.append(parsed)
 
                 elif rec == "E500":
                     current_e500_line = line_no
@@ -440,6 +478,38 @@ def _parse_e520(parts: list[str], line_no: int, parent: int | None) -> ParsedE52
         vl_oc_ipi=_dec(parts[6]),
         vl_sc_ipi=_dec(parts[7]),
         vl_sd_ipi=_dec(parts[8]),
+    )
+
+
+def _parse_h005(parts: list[str], line_no: int) -> ParsedH005 | None:
+    # |H005|DT_INV|VL_INV|MOT_INV|
+    if len(parts) < 4:
+        return None
+    return ParsedH005(
+        line_number=line_no,
+        dt_inv=_str(parts[2]),
+        vl_inv=_dec(parts[3]),
+        mot_inv=_str(parts[4]) if len(parts) > 4 else None,
+    )
+
+
+def _parse_h010(parts: list[str], line_no: int, parent: int | None) -> ParsedH010 | None:
+    # |H010|COD_ITEM|UNID|QTD|VL_UNIT|VL_ITEM|IND_PROP|COD_PART|TXT_COMPL|COD_CTA|VL_ITEM_IR|
+    if len(parts) < 7:
+        return None
+    return ParsedH010(
+        line_number=line_no,
+        parent_h005_line_number=parent,
+        cod_item=_str(parts[2]),
+        unid=_str(parts[3]) if len(parts) > 3 else None,
+        qtd=_dec(parts[4]) if len(parts) > 4 else None,
+        vl_unit=_dec(parts[5]) if len(parts) > 5 else None,
+        vl_item=_dec(parts[6]) if len(parts) > 6 else None,
+        ind_prop=_str(parts[7]) if len(parts) > 7 else None,
+        cod_part=_str(parts[8]) if len(parts) > 8 else None,
+        txt_compl=_str(parts[9]) if len(parts) > 9 else None,
+        cod_cta=_str(parts[10]) if len(parts) > 10 else None,
+        vl_item_ir=_dec(parts[11]) if len(parts) > 11 else None,
     )
 
 
