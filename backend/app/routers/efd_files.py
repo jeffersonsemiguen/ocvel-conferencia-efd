@@ -1,0 +1,236 @@
+import os
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.database import get_db
+from app.models.efd_c190 import EfdC190Analytics
+from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
+from app.models.efd_e510_e520 import EfdE510IpiConsolidation, EfdE520IpiApuracao
+from app.models.efd_file import EfdFile
+from app.models.fiscal_period import FiscalPeriod
+from app.schemas.efd_file import EfdFileResponse
+from app.services.efd_parser.efd_persist_service import run_full_parse
+
+router = APIRouter(prefix="/api/v1", tags=["efd-files"])
+
+
+@router.post(
+    "/fiscal-periods/{period_id}/efd-files",
+    response_model=EfdFileResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def upload_efd_file(period_id: uuid.UUID, file: UploadFile, db: Session = Depends(get_db)):
+    period = db.query(FiscalPeriod).filter(FiscalPeriod.id == period_id).first()
+    if not period:
+        raise HTTPException(status_code=404, detail="Competência não encontrada")
+
+    if not file.filename or not file.filename.lower().endswith(".txt"):
+        raise HTTPException(status_code=400, detail="Apenas arquivos .txt são aceitos")
+
+    upload_dir = os.path.join(settings.upload_dir, str(period_id))
+    os.makedirs(upload_dir, exist_ok=True)
+
+    file_id = uuid.uuid4()
+    stored_path = os.path.join(upload_dir, f"{file_id}_{file.filename}")
+
+    content = file.file.read()
+    with open(stored_path, "wb") as f_out:
+        f_out.write(content)
+
+    efd_record = EfdFile(
+        id=file_id,
+        fiscal_period_id=period_id,
+        original_filename=file.filename,
+        stored_path=stored_path,
+        file_size_bytes=len(content),
+        parse_status="uploaded",
+    )
+    db.add(efd_record)
+    db.flush()
+
+    try:
+        run_full_parse(db, efd_record, stored_path)
+    except Exception as exc:
+        efd_record.parse_status = "error"
+        efd_record.parse_error = str(exc)
+
+    db.commit()
+    db.refresh(efd_record)
+    return efd_record
+
+
+@router.get("/fiscal-periods/{period_id}/efd-files", response_model=list[EfdFileResponse])
+def list_efd_files(period_id: uuid.UUID, db: Session = Depends(get_db)):
+    return db.query(EfdFile).filter(EfdFile.fiscal_period_id == period_id).all()
+
+
+@router.get("/efd-files/{file_id}", response_model=EfdFileResponse)
+def get_efd_file(file_id: uuid.UUID, db: Session = Depends(get_db)):
+    efd_file = db.query(EfdFile).filter(EfdFile.id == file_id).first()
+    if not efd_file:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    return efd_file
+
+
+@router.post("/efd-files/{file_id}/reparse", response_model=EfdFileResponse)
+def reparse_efd_file(file_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Re-processa um arquivo EFD já existente (útil após novas regras de parsing)."""
+    efd_file = db.query(EfdFile).filter(EfdFile.id == file_id).first()
+    if not efd_file:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    try:
+        run_full_parse(db, efd_file, efd_file.stored_path)
+    except Exception as exc:
+        efd_file.parse_status = "error"
+        efd_file.parse_error = str(exc)
+    db.commit()
+    db.refresh(efd_file)
+    return efd_file
+
+
+# --- Endpoints de consulta dos registros estruturados ---
+
+@router.get("/efd-files/{file_id}/c190")
+def get_c190(
+    file_id: uuid.UUID,
+    cfop: str | None = None,
+    cst_icms: str | None = None,
+    db: Session = Depends(get_db),
+):
+    _check_file(db, file_id)
+    q = db.query(EfdC190Analytics).filter(EfdC190Analytics.efd_file_id == file_id)
+    if cfop:
+        q = q.filter(EfdC190Analytics.cfop == cfop)
+    if cst_icms:
+        q = q.filter(EfdC190Analytics.cst_icms == cst_icms)
+    rows = q.order_by(EfdC190Analytics.line_number).all()
+    return [_c190_to_dict(r) for r in rows]
+
+
+@router.get("/efd-files/{file_id}/e110")
+def get_e110(file_id: uuid.UUID, db: Session = Depends(get_db)):
+    _check_file(db, file_id)
+    rows = db.query(EfdE110IcmsApuracao).filter(EfdE110IcmsApuracao.efd_file_id == file_id).all()
+    return [_e110_to_dict(r) for r in rows]
+
+
+@router.get("/efd-files/{file_id}/e111")
+def get_e111(file_id: uuid.UUID, db: Session = Depends(get_db)):
+    _check_file(db, file_id)
+    rows = db.query(EfdE111IcmsAdjustment).filter(EfdE111IcmsAdjustment.efd_file_id == file_id).order_by(EfdE111IcmsAdjustment.line_number).all()
+    return [{"id": str(r.id), "line_number": r.line_number, "cod_aj_apur": r.cod_aj_apur, "descr_compl_aj": r.descr_compl_aj, "vl_aj_apur": float(r.vl_aj_apur) if r.vl_aj_apur else None} for r in rows]
+
+
+@router.get("/efd-files/{file_id}/e510")
+def get_e510(file_id: uuid.UUID, db: Session = Depends(get_db)):
+    _check_file(db, file_id)
+    rows = db.query(EfdE510IpiConsolidation).filter(EfdE510IpiConsolidation.efd_file_id == file_id).order_by(EfdE510IpiConsolidation.line_number).all()
+    return [_e510_to_dict(r) for r in rows]
+
+
+@router.get("/efd-files/{file_id}/e520")
+def get_e520(file_id: uuid.UUID, db: Session = Depends(get_db)):
+    _check_file(db, file_id)
+    rows = db.query(EfdE520IpiApuracao).filter(EfdE520IpiApuracao.efd_file_id == file_id).all()
+    return [_e520_to_dict(r) for r in rows]
+
+
+@router.get("/efd-files/{file_id}/resumo")
+def get_resumo(file_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Resumo consolidado por CFOP+CST dos registros C190."""
+    _check_file(db, file_id)
+    from sqlalchemy import func
+    rows = (
+        db.query(
+            EfdC190Analytics.cfop,
+            EfdC190Analytics.cst_icms,
+            EfdC190Analytics.aliq_icms,
+            func.sum(EfdC190Analytics.vl_opr).label("total_vl_opr"),
+            func.sum(EfdC190Analytics.vl_bc_icms).label("total_bc_icms"),
+            func.sum(EfdC190Analytics.vl_icms).label("total_icms"),
+            func.sum(EfdC190Analytics.vl_bc_icms_st).label("total_bc_icms_st"),
+            func.sum(EfdC190Analytics.vl_icms_st).label("total_icms_st"),
+            func.sum(EfdC190Analytics.vl_ipi).label("total_ipi"),
+            func.count().label("qtd_registros"),
+        )
+        .filter(EfdC190Analytics.efd_file_id == file_id)
+        .group_by(EfdC190Analytics.cfop, EfdC190Analytics.cst_icms, EfdC190Analytics.aliq_icms)
+        .order_by(EfdC190Analytics.cfop, EfdC190Analytics.cst_icms)
+        .all()
+    )
+    return [
+        {
+            "cfop": r.cfop,
+            "cst_icms": r.cst_icms,
+            "aliq_icms": float(r.aliq_icms) if r.aliq_icms else None,
+            "total_vl_opr": float(r.total_vl_opr) if r.total_vl_opr else 0,
+            "total_bc_icms": float(r.total_bc_icms) if r.total_bc_icms else 0,
+            "total_icms": float(r.total_icms) if r.total_icms else 0,
+            "total_bc_icms_st": float(r.total_bc_icms_st) if r.total_bc_icms_st else 0,
+            "total_icms_st": float(r.total_icms_st) if r.total_icms_st else 0,
+            "total_ipi": float(r.total_ipi) if r.total_ipi else 0,
+            "qtd_registros": r.qtd_registros,
+        }
+        for r in rows
+    ]
+
+
+# --- helpers ---
+
+def _check_file(db: Session, file_id: uuid.UUID) -> EfdFile:
+    f = db.query(EfdFile).filter(EfdFile.id == file_id).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+    return f
+
+
+def _dec(v) -> float | None:
+    return float(v) if v is not None else None
+
+
+def _c190_to_dict(r: EfdC190Analytics) -> dict:
+    return {
+        "id": str(r.id), "line_number": r.line_number,
+        "parent_c100_line_number": r.parent_c100_line_number,
+        "cst_icms": r.cst_icms, "cfop": r.cfop,
+        "aliq_icms": _dec(r.aliq_icms), "vl_opr": _dec(r.vl_opr),
+        "vl_bc_icms": _dec(r.vl_bc_icms), "vl_icms": _dec(r.vl_icms),
+        "vl_bc_icms_st": _dec(r.vl_bc_icms_st), "vl_icms_st": _dec(r.vl_icms_st),
+        "vl_red_bc": _dec(r.vl_red_bc), "vl_ipi": _dec(r.vl_ipi),
+        "cod_obs": r.cod_obs,
+    }
+
+
+def _e110_to_dict(r: EfdE110IcmsApuracao) -> dict:
+    return {
+        "id": str(r.id), "line_number": r.line_number,
+        "vl_tot_debitos": _dec(r.vl_tot_debitos), "vl_aj_debitos": _dec(r.vl_aj_debitos),
+        "vl_tot_aj_debitos": _dec(r.vl_tot_aj_debitos), "vl_estornos_cred": _dec(r.vl_estornos_cred),
+        "vl_tot_creditos": _dec(r.vl_tot_creditos), "vl_aj_creditos": _dec(r.vl_aj_creditos),
+        "vl_tot_aj_creditos": _dec(r.vl_tot_aj_creditos), "vl_estornos_deb": _dec(r.vl_estornos_deb),
+        "vl_sld_credor_ant": _dec(r.vl_sld_credor_ant), "vl_sld_apurado": _dec(r.vl_sld_apurado),
+        "vl_tot_ded": _dec(r.vl_tot_ded), "vl_icms_recolher": _dec(r.vl_icms_recolher),
+        "vl_sld_credor_transportar": _dec(r.vl_sld_credor_transportar), "deb_esp": _dec(r.deb_esp),
+    }
+
+
+def _e510_to_dict(r: EfdE510IpiConsolidation) -> dict:
+    return {
+        "id": str(r.id), "line_number": r.line_number,
+        "cfop": r.cfop, "cst_ipi": r.cst_ipi,
+        "vl_cont_ipi": _dec(r.vl_cont_ipi), "vl_bc_ipi": _dec(r.vl_bc_ipi),
+        "vl_ipi": _dec(r.vl_ipi),
+    }
+
+
+def _e520_to_dict(r: EfdE520IpiApuracao) -> dict:
+    return {
+        "id": str(r.id), "line_number": r.line_number,
+        "vl_sd_ant_ipi": _dec(r.vl_sd_ant_ipi), "vl_deb_ipi": _dec(r.vl_deb_ipi),
+        "vl_cred_ipi": _dec(r.vl_cred_ipi), "vl_od_ipi": _dec(r.vl_od_ipi),
+        "vl_oc_ipi": _dec(r.vl_oc_ipi), "vl_sc_ipi": _dec(r.vl_sc_ipi),
+        "vl_sd_ipi": _dec(r.vl_sd_ipi),
+    }

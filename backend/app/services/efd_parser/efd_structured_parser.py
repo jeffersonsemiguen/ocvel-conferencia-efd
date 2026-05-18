@@ -1,0 +1,397 @@
+"""
+Parser estruturado da EFD ICMS/IPI — Sprint 2.
+Extrai C190, E110, E111, E510, E520 e persiste no banco.
+"""
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
+
+
+def _dec(value: str) -> Decimal | None:
+    if not value or not value.strip():
+        return None
+    cleaned = value.strip().replace(",", ".")
+    try:
+        return Decimal(cleaned)
+    except InvalidOperation:
+        return None
+
+
+def _str(value: str) -> str | None:
+    v = value.strip()
+    return v if v else None
+
+
+def _int(value: str) -> int | None:
+    try:
+        return int(value.strip())
+    except (ValueError, AttributeError):
+        return None
+
+
+@dataclass
+class ParsedC100:
+    line_number: int
+    ind_oper: str | None
+    ind_emit: str | None
+    cod_part: str | None
+    cod_mod: str | None
+    cod_sit: str | None
+    ser: str | None
+    num_doc: str | None
+    chv_nfe: str | None
+    dt_doc: str | None
+    dt_e_s: str | None
+    vl_doc: Decimal | None
+    vl_desc: Decimal | None
+    vl_merc: Decimal | None
+    vl_frt: Decimal | None
+    vl_seg: Decimal | None
+    vl_out_da: Decimal | None
+    vl_bc_icms: Decimal | None
+    vl_icms: Decimal | None
+    vl_bc_icms_st: Decimal | None
+    vl_icms_st: Decimal | None
+    vl_ipi: Decimal | None
+    vl_pis: Decimal | None
+    vl_cofins: Decimal | None
+
+
+@dataclass
+class ParsedC190:
+    line_number: int
+    parent_c100_line_number: int | None
+    cst_icms: str | None
+    cfop: str | None
+    aliq_icms: Decimal | None
+    vl_opr: Decimal | None
+    vl_bc_icms: Decimal | None
+    vl_icms: Decimal | None
+    vl_bc_icms_st: Decimal | None
+    vl_icms_st: Decimal | None
+    vl_red_bc: Decimal | None
+    vl_ipi: Decimal | None
+    cod_obs: str | None
+
+
+@dataclass
+class ParsedE110:
+    line_number: int
+    vl_tot_debitos: Decimal | None
+    vl_aj_debitos: Decimal | None
+    vl_tot_aj_debitos: Decimal | None
+    vl_estornos_cred: Decimal | None
+    vl_tot_creditos: Decimal | None
+    vl_aj_creditos: Decimal | None
+    vl_tot_aj_creditos: Decimal | None
+    vl_estornos_deb: Decimal | None
+    vl_sld_credor_ant: Decimal | None
+    vl_sld_apurado: Decimal | None
+    vl_tot_ded: Decimal | None
+    vl_icms_recolher: Decimal | None
+    vl_sld_credor_transportar: Decimal | None
+    deb_esp: Decimal | None
+
+
+@dataclass
+class ParsedE111:
+    line_number: int
+    cod_aj_apur: str | None
+    descr_compl_aj: str | None
+    vl_aj_apur: Decimal | None
+
+
+@dataclass
+class ParsedE510:
+    line_number: int
+    parent_e500_line_number: int | None
+    cfop: str | None
+    cst_ipi: str | None
+    vl_cont_ipi: Decimal | None
+    vl_bc_ipi: Decimal | None
+    vl_ipi: Decimal | None
+
+
+@dataclass
+class ParsedE520:
+    line_number: int
+    parent_e500_line_number: int | None
+    vl_sd_ant_ipi: Decimal | None
+    vl_deb_ipi: Decimal | None
+    vl_cred_ipi: Decimal | None
+    vl_od_ipi: Decimal | None
+    vl_oc_ipi: Decimal | None
+    vl_sc_ipi: Decimal | None
+    vl_sd_ipi: Decimal | None
+
+
+@dataclass
+class ParsedE112:
+    line_number: int
+    parent_e111_line_number: int | None
+    num_da: str | None
+    num_proc: str | None
+    ind_proc: str | None
+    proc: str | None
+    txt_compl: str | None
+
+
+@dataclass
+class ParsedE113:
+    line_number: int
+    parent_e111_line_number: int | None
+    cod_part: str | None
+    cod_mod: str | None
+    ser: str | None
+    sub: str | None
+    num_doc: str | None
+    dt_doc: str | None
+    cod_item: str | None
+    chv_doc_e: str | None
+
+
+@dataclass
+class EfdStructuredParseResult:
+    c100_records: list[ParsedC100] = field(default_factory=list)
+    c190_records: list[ParsedC190] = field(default_factory=list)
+    e110_records: list[ParsedE110] = field(default_factory=list)
+    e111_records: list[ParsedE111] = field(default_factory=list)
+    e112_records: list[ParsedE112] = field(default_factory=list)
+    e113_records: list[ParsedE113] = field(default_factory=list)
+    e510_records: list[ParsedE510] = field(default_factory=list)
+    e520_records: list[ParsedE520] = field(default_factory=list)
+    total_lines: int = 0
+    error: str | None = None
+
+
+def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
+    result = EfdStructuredParseResult()
+    current_c100_line: int | None = None
+    current_e111_line: int | None = None
+    current_e500_line: int | None = None
+
+    try:
+        with open(file_path, encoding="latin-1") as f:
+            for line_no, raw_line in enumerate(f, start=1):
+                result.total_lines += 1
+                line = raw_line.strip()
+                if not line:
+                    continue
+
+                parts = line.split("|")
+                # Layout: |RECORD|field1|...|fieldN|
+                if len(parts) < 2:
+                    continue
+
+                rec = parts[1].strip().upper() if len(parts) > 1 else ""
+
+                if rec == "C100":
+                    current_c100_line = line_no
+                    parsed_c100 = _parse_c100(parts, line_no)
+                    if parsed_c100:
+                        result.c100_records.append(parsed_c100)
+
+                elif rec == "C190":
+                    parsed = _parse_c190(parts, line_no, current_c100_line)
+                    if parsed:
+                        result.c190_records.append(parsed)
+
+                elif rec == "E110":
+                    parsed = _parse_e110(parts, line_no)
+                    if parsed:
+                        result.e110_records.append(parsed)
+
+                elif rec == "E111":
+                    current_e111_line = line_no
+                    parsed = _parse_e111(parts, line_no)
+                    if parsed:
+                        result.e111_records.append(parsed)
+
+                elif rec == "E112":
+                    parsed = _parse_e112(parts, line_no, current_e111_line)
+                    if parsed:
+                        result.e112_records.append(parsed)
+
+                elif rec == "E113":
+                    parsed = _parse_e113(parts, line_no, current_e111_line)
+                    if parsed:
+                        result.e113_records.append(parsed)
+
+                elif rec == "E500":
+                    current_e500_line = line_no
+
+                elif rec == "E510":
+                    parsed = _parse_e510(parts, line_no, current_e500_line)
+                    if parsed:
+                        result.e510_records.append(parsed)
+
+                elif rec == "E520":
+                    parsed = _parse_e520(parts, line_no, current_e500_line)
+                    if parsed:
+                        result.e520_records.append(parsed)
+
+    except Exception as exc:
+        result.error = str(exc)
+
+    return result
+
+
+def _parse_c190(parts: list[str], line_no: int, parent: int | None) -> ParsedC190 | None:
+    # |C190|CST_ICMS|CFOP|ALIQ_ICMS|VL_OPR|VL_BC_ICMS|VL_ICMS|VL_BC_ICMS_ST|VL_ICMS_ST|VL_RED_BC|VL_IPI|COD_OBS|
+    if len(parts) < 13:
+        return None
+    return ParsedC190(
+        line_number=line_no,
+        parent_c100_line_number=parent,
+        cst_icms=_str(parts[2]),
+        cfop=_str(parts[3]),
+        aliq_icms=_dec(parts[4]),
+        vl_opr=_dec(parts[5]),
+        vl_bc_icms=_dec(parts[6]),
+        vl_icms=_dec(parts[7]),
+        vl_bc_icms_st=_dec(parts[8]),
+        vl_icms_st=_dec(parts[9]),
+        vl_red_bc=_dec(parts[10]),
+        vl_ipi=_dec(parts[11]),
+        cod_obs=_str(parts[12]) if len(parts) > 12 else None,
+    )
+
+
+def _parse_c100(parts: list[str], line_no: int) -> ParsedC100 | None:
+    # |C100|IND_OPER|IND_EMIT|COD_PART|COD_MOD|COD_SIT|SER|NUM_DOC|CHV_NFE|
+    # DT_DOC|DT_E_S|VL_DOC|IND_PGTO|VL_DESC|VL_ABAT_NT|VL_MERC|IND_FRT|
+    # VL_FRT|VL_SEG|VL_OUT_DA|VL_BC_ICMS|VL_ICMS|VL_BC_ICMS_ST|VL_ICMS_ST|
+    # VL_IPI|VL_PIS|VL_COFINS|
+    if len(parts) < 22:
+        return None
+    return ParsedC100(
+        line_number=line_no,
+        ind_oper=_str(parts[2]),
+        ind_emit=_str(parts[3]),
+        cod_part=_str(parts[4]),
+        cod_mod=_str(parts[5]),
+        cod_sit=_str(parts[6]),
+        ser=_str(parts[7]),
+        num_doc=_str(parts[8]),
+        chv_nfe=_str(parts[9]),
+        dt_doc=_str(parts[10]),
+        dt_e_s=_str(parts[11]),
+        vl_doc=_dec(parts[12]),
+        vl_desc=_dec(parts[14]),
+        vl_merc=_dec(parts[16]),
+        vl_frt=_dec(parts[18]),
+        vl_seg=_dec(parts[19]),
+        vl_out_da=_dec(parts[20]),
+        vl_bc_icms=_dec(parts[21]),
+        vl_icms=_dec(parts[22]) if len(parts) > 22 else None,
+        vl_bc_icms_st=_dec(parts[23]) if len(parts) > 23 else None,
+        vl_icms_st=_dec(parts[24]) if len(parts) > 24 else None,
+        vl_ipi=_dec(parts[25]) if len(parts) > 25 else None,
+        vl_pis=_dec(parts[26]) if len(parts) > 26 else None,
+        vl_cofins=_dec(parts[27]) if len(parts) > 27 else None,
+    )
+
+
+def _parse_e110(parts: list[str], line_no: int) -> ParsedE110 | None:
+    # |E110|VL_TOT_DEBITOS|VL_AJ_DEBITOS|VL_TOT_AJ_DEBITOS|VL_ESTORNOS_CRED|
+    # VL_TOT_CREDITOS|VL_AJ_CREDITOS|VL_TOT_AJ_CREDITOS|VL_ESTORNOS_DEB|
+    # VL_SLD_CREDOR_ANT|VL_SLD_APURADO|VL_TOT_DED|VL_ICMS_RECOLHER|
+    # VL_SLD_CREDOR_TRANSPORTAR|DEB_ESP|
+    if len(parts) < 15:
+        return None
+    return ParsedE110(
+        line_number=line_no,
+        vl_tot_debitos=_dec(parts[2]),
+        vl_aj_debitos=_dec(parts[3]),
+        vl_tot_aj_debitos=_dec(parts[4]),
+        vl_estornos_cred=_dec(parts[5]),
+        vl_tot_creditos=_dec(parts[6]),
+        vl_aj_creditos=_dec(parts[7]),
+        vl_tot_aj_creditos=_dec(parts[8]),
+        vl_estornos_deb=_dec(parts[9]),
+        vl_sld_credor_ant=_dec(parts[10]),
+        vl_sld_apurado=_dec(parts[11]),
+        vl_tot_ded=_dec(parts[12]),
+        vl_icms_recolher=_dec(parts[13]),
+        vl_sld_credor_transportar=_dec(parts[14]),
+        deb_esp=_dec(parts[15]) if len(parts) > 15 else None,
+    )
+
+
+def _parse_e111(parts: list[str], line_no: int) -> ParsedE111 | None:
+    # |E111|COD_AJ_APUR|DESCR_COMPL_AJ|VL_AJ_APUR|
+    if len(parts) < 5:
+        return None
+    return ParsedE111(
+        line_number=line_no,
+        cod_aj_apur=_str(parts[2]),
+        descr_compl_aj=_str(parts[3]),
+        vl_aj_apur=_dec(parts[4]),
+    )
+
+
+def _parse_e112(parts: list[str], line_no: int, parent: int | None) -> ParsedE112 | None:
+    # |E112|NUM_DA|NUM_PROC|IND_PROC|PROC|TXT_COMPL|
+    if len(parts) < 4:
+        return None
+    return ParsedE112(
+        line_number=line_no,
+        parent_e111_line_number=parent,
+        num_da=_str(parts[2]) if len(parts) > 2 else None,
+        num_proc=_str(parts[3]) if len(parts) > 3 else None,
+        ind_proc=_str(parts[4]) if len(parts) > 4 else None,
+        proc=_str(parts[5]) if len(parts) > 5 else None,
+        txt_compl=_str(parts[6]) if len(parts) > 6 else None,
+    )
+
+
+def _parse_e113(parts: list[str], line_no: int, parent: int | None) -> ParsedE113 | None:
+    # |E113|COD_PART|COD_MOD|SER|SUB|NUM_DOC|DT_DOC|COD_ITEM|VL_AJ_ITEM|CHV_DOC_E|
+    if len(parts) < 6:
+        return None
+    return ParsedE113(
+        line_number=line_no,
+        parent_e111_line_number=parent,
+        cod_part=_str(parts[2]) if len(parts) > 2 else None,
+        cod_mod=_str(parts[3]) if len(parts) > 3 else None,
+        ser=_str(parts[4]) if len(parts) > 4 else None,
+        sub=_str(parts[5]) if len(parts) > 5 else None,
+        num_doc=_str(parts[6]) if len(parts) > 6 else None,
+        dt_doc=_str(parts[7]) if len(parts) > 7 else None,
+        cod_item=_str(parts[8]) if len(parts) > 8 else None,
+        chv_doc_e=_str(parts[10]) if len(parts) > 10 else None,
+    )
+
+
+def _parse_e510(parts: list[str], line_no: int, parent: int | None) -> ParsedE510 | None:
+    # |E510|CFOP|CST_IPI|VL_CONT_IPI|VL_BC_IPI|VL_IPI|
+    if len(parts) < 7:
+        return None
+    return ParsedE510(
+        line_number=line_no,
+        parent_e500_line_number=parent,
+        cfop=_str(parts[2]),
+        cst_ipi=_str(parts[3]),
+        vl_cont_ipi=_dec(parts[4]),
+        vl_bc_ipi=_dec(parts[5]),
+        vl_ipi=_dec(parts[6]),
+    )
+
+
+def _parse_e520(parts: list[str], line_no: int, parent: int | None) -> ParsedE520 | None:
+    # |E520|VL_SD_ANT_IPI|VL_DEB_IPI|VL_CRED_IPI|VL_OD_IPI|VL_OC_IPI|VL_SC_IPI|VL_SD_IPI|
+    if len(parts) < 9:
+        return None
+    return ParsedE520(
+        line_number=line_no,
+        parent_e500_line_number=parent,
+        vl_sd_ant_ipi=_dec(parts[2]),
+        vl_deb_ipi=_dec(parts[3]),
+        vl_cred_ipi=_dec(parts[4]),
+        vl_od_ipi=_dec(parts[5]),
+        vl_oc_ipi=_dec(parts[6]),
+        vl_sc_ipi=_dec(parts[7]),
+        vl_sd_ipi=_dec(parts[8]),
+    )
