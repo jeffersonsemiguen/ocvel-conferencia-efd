@@ -185,11 +185,12 @@ def _conf_c190_vs_c100(
     Campos comparados: vl_doc/vl_opr, vl_bc_icms, vl_icms, vl_bc_icms_st, vl_icms_st, vl_ipi.
     Só verifica documentos com situação normal (cod_sit 00/07) e ignora cancelados.
     """
+    # Exclui apenas cancelados (02/03), denegados (04) e inutilizados (05)
     c100_rows = (
         db.query(EfdC100Doc)
         .filter(
             EfdC100Doc.efd_file_id == efd_file_id,
-            EfdC100Doc.cod_sit.in_(["00", "07", "0", "7"]),
+            EfdC100Doc.cod_sit.notin_(["02", "03", "04", "05", "2", "3", "4", "5"]),
         )
         .all()
     )

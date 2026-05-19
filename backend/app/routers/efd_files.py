@@ -51,8 +51,8 @@ def upload_efd_file(period_id: uuid.UUID, file: UploadFile, db: Session = Depend
     if not period:
         raise HTTPException(status_code=404, detail="Competência não encontrada")
 
-    if not file.filename or not file.filename.lower().endswith(".txt"):
-        raise HTTPException(status_code=400, detail="Apenas arquivos .txt são aceitos")
+    if not file.filename or not file.filename.lower().endswith((".txt", ".sped")):
+        raise HTTPException(status_code=400, detail="Apenas arquivos .txt ou .sped são aceitos")
 
     upload_dir = os.path.join(settings.upload_dir, str(period_id))
     os.makedirs(upload_dir, exist_ok=True)
@@ -101,8 +101,8 @@ def upload_efd_auto(
     3. Otherwise create (or reuse) the company, find/create the fiscal period for the
        year/month of DT_INI, attach the file to that period, then run the full parse.
     """
-    if not file.filename or not file.filename.lower().endswith(".txt"):
-        raise HTTPException(status_code=400, detail="Apenas arquivos .txt são aceitos")
+    if not file.filename or not file.filename.lower().endswith((".txt", ".sped")):
+        raise HTTPException(status_code=400, detail="Apenas arquivos .txt ou .sped são aceitos")
 
     # Save to a temp staging dir first — we only know the period_id after parsing the header.
     staging_dir = os.path.join(settings.upload_dir, "_staging")

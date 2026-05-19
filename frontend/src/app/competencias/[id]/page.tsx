@@ -288,7 +288,7 @@ function EfdTab({ period }: { period: FiscalPeriod }) {
           <UploadIcon className="w-3.5 h-3.5 mr-1" />
           {uploading ? "Enviando..." : "Enviar EFD (.txt)"}
         </Button>
-        <input ref={inputRef} type="file" accept=".txt" className="hidden" onChange={handleUpload} />
+        <input ref={inputRef} type="file" accept=".txt,.sped" className="hidden" onChange={handleUpload} />
       </div>
 
       {loading ? <p className="text-sm text-muted-foreground">Carregando...</p> : files.length === 0 ? (
