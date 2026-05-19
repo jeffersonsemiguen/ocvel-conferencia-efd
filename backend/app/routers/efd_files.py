@@ -1,12 +1,15 @@
 import os
 import uuid
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.models.company import Company
 from app.models.user import User
 from app.models.efd_c190 import EfdC190Analytics
 from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
@@ -15,8 +18,27 @@ from app.models.efd_file import EfdFile
 from app.models.fiscal_period import FiscalPeriod
 from app.schemas.efd_file import EfdFileResponse
 from app.services.efd_parser.efd_persist_service import run_full_parse
+from app.services.efd_parser.efd_txt_parser import parse_efd_txt
 
 router = APIRouter(dependencies=[Depends(get_current_user)], prefix="/api/v1", tags=["efd-files"])
+
+
+class AutoUploadCompanyConflict(BaseModel):
+    """Returned with HTTP 409 when CNPJ from EFD header matches an existing company.
+    The frontend prompts the user to confirm using the existing company."""
+    conflict: str = "cnpj_exists"
+    existing_company_id: uuid.UUID
+    existing_company_name: str
+    existing_company_state: str | None
+    parsed_header: dict
+
+
+class AutoUploadResponse(BaseModel):
+    company_id: uuid.UUID
+    company_created: bool
+    fiscal_period_id: uuid.UUID
+    fiscal_period_created: bool
+    efd_file: EfdFileResponse
 
 
 @router.post(
@@ -62,6 +84,141 @@ def upload_efd_file(period_id: uuid.UUID, file: UploadFile, db: Session = Depend
     db.commit()
     db.refresh(efd_record)
     return efd_record
+
+
+@router.post("/efd-files/upload-auto", status_code=status.HTTP_201_CREATED)
+def upload_efd_auto(
+    file: UploadFile,
+    confirm_existing_company: bool = Form(False),
+    db: Session = Depends(get_db),
+):
+    """Upload an EFD file and auto-create company + fiscal period from its 0000 header.
+
+    Flow:
+    1. Save the file to a temp location and parse the |0000| header.
+    2. If a company with that CNPJ already exists and confirm_existing_company=False,
+       return 409 with the existing company info — the frontend prompts the user.
+    3. Otherwise create (or reuse) the company, find/create the fiscal period for the
+       year/month of DT_INI, attach the file to that period, then run the full parse.
+    """
+    if not file.filename or not file.filename.lower().endswith(".txt"):
+        raise HTTPException(status_code=400, detail="Apenas arquivos .txt são aceitos")
+
+    # Save to a temp staging dir first — we only know the period_id after parsing the header.
+    staging_dir = os.path.join(settings.upload_dir, "_staging")
+    os.makedirs(staging_dir, exist_ok=True)
+    file_id = uuid.uuid4()
+    staging_path = os.path.join(staging_dir, f"{file_id}_{file.filename}")
+    content = file.file.read()
+    with open(staging_path, "wb") as f_out:
+        f_out.write(content)
+
+    header_result = parse_efd_txt(staging_path)
+    if header_result.error or not header_result.header:
+        os.remove(staging_path)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Não foi possível ler o registro |0000| da EFD: {header_result.error or 'header ausente'}",
+        )
+
+    header = header_result.header
+    if not header.cnpj or not header.start_date or len(header.start_date) != 8:
+        os.remove(staging_path)
+        raise HTTPException(status_code=400, detail="Registro 0000 está incompleto (CNPJ ou DT_INI)")
+
+    # DT_INI formato DDMMAAAA
+    try:
+        dt_ini = datetime.strptime(header.start_date, "%d%m%Y")
+    except ValueError:
+        os.remove(staging_path)
+        raise HTTPException(status_code=400, detail=f"DT_INI inválida: {header.start_date}")
+
+    year, month = dt_ini.year, dt_ini.month
+
+    existing_company = db.query(Company).filter(Company.cnpj == header.cnpj).first()
+    if existing_company and not confirm_existing_company:
+        os.remove(staging_path)
+        return _conflict_response(existing_company, header, year, month)
+
+    if existing_company:
+        company = existing_company
+        company_created = False
+    else:
+        company = Company(
+            cnpj=header.cnpj,
+            name=header.company_name or "Sem nome",
+            state=header.state,
+            state_registration=header.state_registration,
+        )
+        db.add(company)
+        db.flush()
+        company_created = True
+
+    period = (
+        db.query(FiscalPeriod)
+        .filter(FiscalPeriod.company_id == company.id, FiscalPeriod.year == year, FiscalPeriod.month == month)
+        .first()
+    )
+    period_created = False
+    if not period:
+        period = FiscalPeriod(company_id=company.id, year=year, month=month)
+        db.add(period)
+        db.flush()
+        period_created = True
+
+    # Move staging file → final destination.
+    final_dir = os.path.join(settings.upload_dir, str(period.id))
+    os.makedirs(final_dir, exist_ok=True)
+    final_path = os.path.join(final_dir, f"{file_id}_{file.filename}")
+    os.replace(staging_path, final_path)
+
+    efd_record = EfdFile(
+        id=file_id,
+        fiscal_period_id=period.id,
+        original_filename=file.filename,
+        stored_path=final_path,
+        file_size_bytes=len(content),
+        parse_status="uploaded",
+    )
+    db.add(efd_record)
+    db.flush()
+
+    try:
+        run_full_parse(db, efd_record, final_path)
+    except Exception as exc:
+        efd_record.parse_status = "error"
+        efd_record.parse_error = str(exc)
+
+    db.commit()
+    db.refresh(efd_record)
+    db.refresh(period)
+
+    return AutoUploadResponse(
+        company_id=company.id,
+        company_created=company_created,
+        fiscal_period_id=period.id,
+        fiscal_period_created=period_created,
+        efd_file=EfdFileResponse.model_validate(efd_record),
+    )
+
+
+def _conflict_response(existing: Company, header, year: int, month: int):
+    from fastapi.responses import JSONResponse
+    payload = AutoUploadCompanyConflict(
+        existing_company_id=existing.id,
+        existing_company_name=existing.name,
+        existing_company_state=existing.state,
+        parsed_header={
+            "cnpj": header.cnpj,
+            "company_name": header.company_name,
+            "state": header.state,
+            "start_date": header.start_date,
+            "end_date": header.end_date,
+            "year": year,
+            "month": month,
+        },
+    )
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=payload.model_dump(mode="json"))
 
 
 @router.get("/fiscal-periods/{period_id}/efd-files", response_model=list[EfdFileResponse])

@@ -34,17 +34,24 @@ def run_structural_validation(
 ) -> list[Finding]:
     findings: list[Finding] = []
 
-    _check_h_inventory(db, efd_file_id, fiscal_period, findings)
+    _check_h_inventory(db, efd_file_id, fiscal_period, company, findings)
     _check_g_ciap(db, efd_file_id, fiscal_period, company, findings)
     _check_k_estoque(db, efd_file_id, fiscal_period, company, findings)
+    _check_inscricoes_auxiliares(db, efd_file_id, company, findings)
     _check_cad_part(db, efd_file_id, findings)
     _check_cad_prod(db, efd_file_id, findings)
 
     return findings
 
 
-def _check_h_inventory(db, efd_file_id, fiscal_period, findings):
-    requires = getattr(fiscal_period, "requires_inventory", None)
+def _check_h_inventory(db, efd_file_id, fiscal_period, company, findings):
+    # Bloco H é exigido quando o mês da competência == company.inventario_mes
+    # (ou flag legado fiscal_period.requires_inventory continua sendo respeitado).
+    requires_legacy = getattr(fiscal_period, "requires_inventory", None)
+    inventario_mes = getattr(company, "inventario_mes", None) if company else None
+    period_month = getattr(fiscal_period, "month", None)
+
+    requires = bool(requires_legacy) or (inventario_mes is not None and inventario_mes == period_month)
     if not requires:
         return
 
@@ -54,15 +61,24 @@ def _check_h_inventory(db, efd_file_id, fiscal_period, findings):
         .count()
     )
     if h005_count == 0:
+        ref = getattr(company, "inventario_competencia_ref", None) if company else None
+        ref_label = {
+            "mes_anterior": " (referente ao mês anterior)",
+            "dezembro_ano_anterior": " (referente a dez do ano anterior)",
+            "customizado": " (referência customizada)",
+        }.get(ref, "")
         findings.append(Finding(
             rule_code="REGRA-H-001-STRUCT",
             severity="critico",
             finding_type="bloco_ausente",
-            title="Bloco H (Inventário) ausente — competência exige inventário",
+            title=f"Bloco H (Inventário) ausente — mês de entrega do inventário{ref_label}",
             description=(
-                "A competência fiscal está configurada como exigindo inventário "
-                "(requires_inventory=True), mas nenhum registro H005 foi encontrado "
-                "no arquivo EFD."
+                f"A empresa entrega o inventário no mês {inventario_mes:02d} e a competência "
+                f"atual ({period_month:02d}) coincide com esse mês, mas nenhum registro H005 "
+                "foi encontrado no arquivo EFD."
+                if inventario_mes
+                else "A competência fiscal está configurada como exigindo inventário, "
+                "mas nenhum registro H005 foi encontrado no arquivo EFD."
             ),
             register_code="H005",
         ))
@@ -132,10 +148,18 @@ def _check_g_ciap(db, efd_file_id, fiscal_period, company, findings):
 
 
 def _check_k_estoque(db, efd_file_id, fiscal_period, company, findings):
-    requires_k_period = getattr(fiscal_period, "requires_block_k", None)
-    requires_k_company = getattr(company, "requires_block_k", None)
+    # bloco_k_tipo do company define o comportamento esperado:
+    #   "nao_aplica"   → sem checagem
+    #   "simplificado" → exige apenas K200/K280 (não pode faltar nem ter K100/K220/K230 cheios)
+    #   "completo"     → exige K100 + filhos (K200/K220/K230/...)
+    bloco_k_tipo = getattr(company, "bloco_k_tipo", None) if company else None
+    # Compatibilidade: flags legadas ainda forçam tratamento "completo".
+    requires_legacy_period = getattr(fiscal_period, "requires_block_k", None)
+    requires_legacy_company = getattr(company, "requires_block_k", None)
+    if bloco_k_tipo is None and (requires_legacy_period or requires_legacy_company):
+        bloco_k_tipo = "completo"
 
-    if not requires_k_period and not requires_k_company:
+    if not bloco_k_tipo or bloco_k_tipo == "nao_aplica":
         return
 
     k100_list = (
@@ -144,16 +168,38 @@ def _check_k_estoque(db, efd_file_id, fiscal_period, company, findings):
         .order_by(EfdBlocoK100.line_number)
         .all()
     )
+    k200_count = (
+        db.query(EfdBlocoK200)
+        .filter(EfdBlocoK200.efd_file_id == efd_file_id)
+        .count()
+    )
 
+    if bloco_k_tipo == "simplificado":
+        # Modo simplificado: precisa só de K200/K280. K100 não é obrigatório.
+        if k200_count == 0:
+            findings.append(Finding(
+                rule_code="REGRA-K-001-SIMP",
+                severity="critico",
+                finding_type="bloco_ausente",
+                title="Bloco K simplificado ausente — empresa exige K200/K280",
+                description=(
+                    "A empresa está configurada como Bloco K simplificado mas nenhum registro "
+                    "K200 (estoque escriturado) foi encontrado no arquivo EFD."
+                ),
+                register_code="K200",
+            ))
+        return
+
+    # Modo completo: precisa de K100 + K200 + (idealmente K220/K230 produção)
     if not k100_list:
         findings.append(Finding(
             rule_code="REGRA-K-001",
             severity="critico",
             finding_type="bloco_ausente",
-            title="Bloco K (Controle de Estoque) ausente — empresa/competência exige bloco K",
+            title="Bloco K (Controle de Estoque) ausente — empresa exige bloco K completo",
             description=(
-                "A empresa ou competência fiscal está configurada para exigir o Bloco K "
-                "(requires_block_k=True), mas nenhum registro K100 foi encontrado no arquivo EFD."
+                "A empresa está configurada como Bloco K completo (bloco_k_tipo=completo), "
+                "mas nenhum registro K100 foi encontrado no arquivo EFD."
             ),
             register_code="K100",
         ))
@@ -211,6 +257,53 @@ def _check_k_estoque(db, efd_file_id, fiscal_period, company, findings):
                 ),
                 register_code="K200",
                 field_name="cod_item",
+            ))
+
+
+def _check_inscricoes_auxiliares(db, efd_file_id, company, findings):
+    """Verifica se as inscrições auxiliares (IE-ST em outros estados) cadastradas
+    na empresa estão declaradas no registro 0015 do arquivo EFD."""
+    inscricoes = getattr(company, "inscricoes_auxiliares", None) if company else None
+    if not inscricoes:
+        return
+
+    # Lê os registros 0015 direto do arquivo (não persistidos).
+    from app.models.efd_file import EfdFile
+    efd_file = db.query(EfdFile).filter(EfdFile.id == efd_file_id).first()
+    if not efd_file or not efd_file.stored_path:
+        return
+
+    declared: set[tuple[str, str]] = set()
+    try:
+        with open(efd_file.stored_path, encoding="latin-1") as f:
+            for line in f:
+                fields = line.strip().split("|")
+                # |0015|UF_ST|IE_ST|
+                if len(fields) >= 4 and fields[1] == "0015":
+                    uf = (fields[2] or "").strip().upper()
+                    ie = (fields[3] or "").strip()
+                    if uf and ie:
+                        declared.add((uf, ie))
+    except OSError:
+        return
+
+    for entry in inscricoes:
+        uf = (entry.get("uf") or "").upper() if isinstance(entry, dict) else None
+        ie = entry.get("ie") if isinstance(entry, dict) else None
+        if not uf or not ie:
+            continue
+        if (uf, ie) not in declared:
+            findings.append(Finding(
+                rule_code="REGRA-0015-001",
+                severity="critico",
+                finding_type="registro_ausente",
+                title=f"Inscrição auxiliar {uf}/{ie} ausente do registro 0015",
+                description=(
+                    f"A empresa possui inscrição estadual auxiliar cadastrada para {uf} "
+                    f"(IE {ie}) mas o arquivo EFD não traz o registro 0015 correspondente."
+                ),
+                register_code="0015",
+                field_name="UF_ST/IE_ST",
             ))
 
 

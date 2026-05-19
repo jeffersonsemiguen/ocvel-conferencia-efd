@@ -76,6 +76,14 @@ export interface CorrectedFile {
   generated_at: string;
 }
 
+export type BlocoKTipo = "nao_aplica" | "simplificado" | "completo";
+export type InventarioRef = "mes_anterior" | "dezembro_ano_anterior" | "customizado";
+
+export interface InscricaoAuxiliar {
+  uf: string;
+  ie: string;
+}
+
 export interface Company {
   id: string;
   cnpj: string;
@@ -84,6 +92,11 @@ export interface Company {
   state_registration: string | null;
   state: string | null;
   is_active: boolean;
+  uses_ciap: boolean;
+  bloco_k_tipo: BlocoKTipo;
+  inventario_mes: number | null;
+  inventario_competencia_ref: InventarioRef | null;
+  inscricoes_auxiliares: InscricaoAuxiliar[];
   created_at: string;
 }
 
