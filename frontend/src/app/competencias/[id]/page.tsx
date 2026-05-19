@@ -522,18 +522,33 @@ function EfdTab({ period }: { period: FiscalPeriod }) {
                   <TableCell className="text-sm">{f.total_lines?.toLocaleString() ?? "—"}</TableCell>
                   <TableCell><StatusBadge status={f.parse_status} /></TableCell>
                   <TableCell>
-                    <Button
-                      size="sm" variant="ghost" className="h-6 text-xs px-2"
-                      onClick={async () => {
-                        try {
-                          const updated = await api.post<EfdFile>(`/api/v1/efd-files/${f.id}/reparse`, {});
-                          setFiles(prev => prev.map(x => x.id === f.id ? updated : x));
-                          toast.success("Re-processado com sucesso");
-                        } catch { toast.error("Erro ao re-processar"); }
-                      }}
-                    >
-                      Re-parsear
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm" variant="ghost" className="h-6 text-xs px-2"
+                        onClick={async () => {
+                          try {
+                            const updated = await api.post<EfdFile>(`/api/v1/efd-files/${f.id}/reparse`, {});
+                            setFiles(prev => prev.map(x => x.id === f.id ? updated : x));
+                            toast.success("Re-processado com sucesso");
+                          } catch { toast.error("Erro ao re-processar"); }
+                        }}
+                      >
+                        Re-parsear
+                      </Button>
+                      <Button
+                        size="sm" variant="ghost" className="h-6 text-xs px-2 text-destructive hover:text-destructive"
+                        onClick={async () => {
+                          if (!confirm(`Excluir "${f.original_filename}"? Esta ação remove o arquivo e todos os dados processados.`)) return;
+                          try {
+                            await api.delete(`/api/v1/efd-files/${f.id}`);
+                            setFiles(prev => prev.filter(x => x.id !== f.id));
+                            toast.success("Arquivo excluído");
+                          } catch { toast.error("Erro ao excluir arquivo"); }
+                        }}
+                      >
+                        <XIcon className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

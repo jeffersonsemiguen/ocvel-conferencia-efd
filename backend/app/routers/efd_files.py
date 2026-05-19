@@ -243,6 +243,38 @@ def get_efd_file(file_id: uuid.UUID, db: Session = Depends(get_db)):
     return efd_file
 
 
+@router.delete("/efd-files/{file_id}", status_code=204)
+def delete_efd_file(file_id: uuid.UUID, db: Session = Depends(get_db)):
+    from app.services.efd_parser.efd_persist_service import _clear_existing
+    from app.models.validation import ValidationRun, ValidationFinding
+    from app.models.correction import CorrectionSuggestion, CorrectedFile
+
+    efd_file = db.query(EfdFile).filter(EfdFile.id == file_id).first()
+    if not efd_file:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+
+    _clear_existing(db, file_id)
+
+    runs = db.query(ValidationRun).filter(ValidationRun.efd_file_id == file_id).all()
+    for run in runs:
+        db.query(ValidationFinding).filter(ValidationFinding.validation_run_id == run.id).delete()
+        db.delete(run)
+
+    db.query(CorrectionSuggestion).filter(CorrectionSuggestion.efd_file_id == file_id).delete()
+    db.query(CorrectedFile).filter(CorrectedFile.original_efd_file_id == file_id).delete()
+
+    stored_path = efd_file.stored_path
+    db.delete(efd_file)
+    db.commit()
+
+    import os as _os
+    try:
+        if stored_path and _os.path.exists(stored_path):
+            _os.remove(stored_path)
+    except OSError:
+        pass
+
+
 @router.post("/efd-files/{file_id}/reparse", response_model=EfdFileResponse)
 def reparse_efd_file(file_id: uuid.UUID, db: Session = Depends(get_db)):
     """Re-processa um arquivo EFD já existente (útil após novas regras de parsing)."""
