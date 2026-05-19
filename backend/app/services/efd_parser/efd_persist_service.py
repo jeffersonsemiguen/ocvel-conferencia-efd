@@ -12,6 +12,7 @@ from app.models.efd_bloco0 import EfdBloco0Item, EfdBloco0Part
 from app.models.efd_bloco_h import EfdBlocoH005, EfdBlocoH010
 from app.models.efd_bloco_gk import EfdBlocoG110, EfdBlocoG125, EfdBlocoK100, EfdBlocoK200
 from app.models.efd_c100 import EfdC100Doc
+from app.models.efd_c170 import EfdC170Item
 from app.models.efd_c190 import EfdC190Analytics
 from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
 from app.models.efd_e510_e520 import EfdE510IpiConsolidation, EfdE520IpiApuracao
@@ -54,6 +55,21 @@ def persist_structured_records(
             vl_ipi=r.vl_ipi,
             vl_pis=r.vl_pis,
             vl_cofins=r.vl_cofins,
+        ))
+
+    for r in result.c170_records:
+        db.add(EfdC170Item(
+            efd_file_id=efd_file_id,
+            parent_c100_line_number=r.parent_c100_line_number,
+            line_number=r.line_number,
+            num_item=r.num_item,
+            cod_item=r.cod_item,
+            cfop=r.cfop,
+            cst_icms=r.cst_icms,
+            vl_item=r.vl_item,
+            vl_opr=r.vl_opr,
+            vl_bc_icms=r.vl_bc_icms,
+            vl_icms=r.vl_icms,
         ))
 
     for r in result.c190_records:
@@ -324,6 +340,7 @@ def run_full_parse(db: Session, efd_file: EfdFile, stored_path: str) -> None:
 
 def _clear_existing(db: Session, efd_file_id: uuid.UUID) -> None:
     for model in (
+        EfdC170Item,
         EfdBlocoH005,
         EfdBlocoH010,
         EfdBlocoG110,

@@ -60,6 +60,20 @@ class ParsedC100:
 
 
 @dataclass
+class ParsedC170:
+    line_number: int
+    parent_c100_line_number: int | None
+    num_item: int | None
+    cod_item: str | None
+    cfop: str | None
+    cst_icms: str | None
+    vl_item: Decimal | None
+    vl_opr: Decimal | None
+    vl_bc_icms: Decimal | None
+    vl_icms: Decimal | None
+
+
+@dataclass
 class ParsedC190:
     line_number: int
     parent_c100_line_number: int | None
@@ -260,6 +274,7 @@ class ParsedK200:
 @dataclass
 class EfdStructuredParseResult:
     c100_records: list[ParsedC100] = field(default_factory=list)
+    c170_records: list[ParsedC170] = field(default_factory=list)
     c190_records: list[ParsedC190] = field(default_factory=list)
     e110_records: list[ParsedE110] = field(default_factory=list)
     e111_records: list[ParsedE111] = field(default_factory=list)
@@ -318,6 +333,11 @@ def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
                     parsed_c100 = _parse_c100(parts, line_no)
                     if parsed_c100:
                         result.c100_records.append(parsed_c100)
+
+                elif rec == "C170":
+                    parsed = _parse_c170(parts, line_no, current_c100_line)
+                    if parsed:
+                        result.c170_records.append(parsed)
 
                 elif rec == "C190":
                     parsed = _parse_c190(parts, line_no, current_c100_line)
@@ -395,6 +415,27 @@ def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
         result.error = str(exc)
 
     return result
+
+
+def _parse_c170(parts: list[str], line_no: int, parent: int | None) -> ParsedC170 | None:
+    # |C170|NUM_ITEM|COD_ITEM|DESCR_COMPL|QTD|UNID|VL_ITEM|VL_DESC|IND_MOV|
+    #       CST_ICMS|CFOP|COD_NAT|VL_BC_ICMS|ALIQ_ICMS|VL_ICMS|...|VL_OPR|
+    # pos:    2       3      4      5    6     7        8      9
+    #         10      11     12     13      14      15           25
+    if len(parts) < 12:
+        return None
+    return ParsedC170(
+        line_number=line_no,
+        parent_c100_line_number=parent,
+        num_item=_int(parts[2]) if len(parts) > 2 else None,
+        cod_item=_str(parts[3]) if len(parts) > 3 else None,
+        cfop=_str(parts[11]) if len(parts) > 11 else None,
+        cst_icms=_str(parts[10]) if len(parts) > 10 else None,
+        vl_item=_dec(parts[7]) if len(parts) > 7 else None,
+        vl_opr=_dec(parts[25]) if len(parts) > 25 else None,
+        vl_bc_icms=_dec(parts[13]) if len(parts) > 13 else None,
+        vl_icms=_dec(parts[15]) if len(parts) > 15 else None,
+    )
 
 
 def _parse_c190(parts: list[str], line_no: int, parent: int | None) -> ParsedC190 | None:

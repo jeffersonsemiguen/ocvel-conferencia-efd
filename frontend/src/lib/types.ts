@@ -55,6 +55,9 @@ export interface CorrectionSuggestion {
   // update_field | replace_line | insert_line_after | insert_line_before | delete_line | recalculate_total
   action_type: string;
   rule_code: string | null;
+  source: string | null;
+  cfop: string | null;
+  cst: string | null;
   approved_by: string | null;
   approved_at: string | null;
   rejected_by: string | null;

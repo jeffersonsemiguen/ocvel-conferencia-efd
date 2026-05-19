@@ -1093,10 +1093,22 @@ function SugestoesSection({
     }
   }
 
-  const pending = suggestions.filter(s => s.status === "pending");
-  const approved = suggestions.filter(s => s.status === "approved");
-  const rejected = suggestions.filter(s => s.status === "rejected");
-  const hasSuggestions = suggestions.length > 0;
+  const pending = suggestions.filter(s => s.status === "pending" && s.source !== "c190_correcao");
+  const approved = suggestions.filter(s => s.status === "approved" && s.source !== "c190_correcao");
+  const rejected = suggestions.filter(s => s.status === "rejected" && s.source !== "c190_correcao");
+  const hasSuggestions = pending.length > 0 || approved.length > 0 || rejected.length > 0;
+
+  // Grupos C190×C100
+  const c190Sugs = suggestions.filter(s => s.source === "c190_correcao");
+  const c190Groups = (() => {
+    const map = new Map<string, { cfop: string | null; cst: string | null; original: string; suggested: string; items: CorrectionSuggestion[] }>();
+    for (const s of c190Sugs) {
+      const key = `${s.cfop ?? ""}|${s.cst ?? ""}|${s.original_value}|${s.suggested_value}`;
+      if (!map.has(key)) map.set(key, { cfop: s.cfop ?? null, cst: s.cst ?? null, original: s.original_value ?? "", suggested: s.suggested_value, items: [] });
+      map.get(key)!.items.push(s);
+    }
+    return [...map.values()];
+  })();
 
   return (
     <div className="border rounded-lg overflow-hidden mt-4 bg-card">
@@ -1259,6 +1271,164 @@ function SugestoesSection({
           )}
         </div>
       )}
+
+      {/* Painel C190×C100 — grupos de correção */}
+      {c190Groups.length > 0 && (
+        <C190CorrectionPanel
+          groups={c190Groups}
+          efdFileId={efdFileId}
+          onApproved={(ids) =>
+            setSuggestions(prev => prev.map(s => ids.includes(s.id) ? { ...s, status: "approved" } : s))
+          }
+          onReverted={(orig, sugg) =>
+            setSuggestions(prev => prev.map(s =>
+              s.source === "c190_correcao" && s.original_value === orig && s.suggested_value === sugg
+                ? { ...s, status: "pending", approved_by: null, approved_at: null }
+                : s
+            ))
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── C190 Correction Panel ────────────────────────────────────────────────────
+
+function C190CorrectionPanel({
+  groups, efdFileId, onApproved, onReverted,
+}: {
+  groups: { cfop: string | null; cst: string | null; original: string; suggested: string; items: CorrectionSuggestion[] }[];
+  efdFileId: string;
+  onApproved: (ids: string[]) => void;
+  onReverted: (original: string, suggested: string) => void;
+}) {
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [checked, setChecked] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    groups.forEach(g => g.items.forEach(s => { init[s.id] = s.status === "pending"; }));
+    return init;
+  });
+  const [approving, setApproving] = useState<string | null>(null);
+  const [reverting, setReverting] = useState<string | null>(null);
+
+  function toggleGroup(idx: number, allChecked: boolean) {
+    const ids = groups[idx].items.map(s => s.id);
+    setChecked(c => { const n = { ...c }; ids.forEach(id => { n[id] = !allChecked; }); return n; });
+  }
+
+  async function confirmGroup(idx: number) {
+    const g = groups[idx];
+    const ids = g.items.filter(s => checked[s.id] && s.status === "pending").map(s => s.id);
+    if (!ids.length) return;
+    const key = `${g.original}|${g.suggested}`;
+    setApproving(key);
+    try {
+      await api.post("/api/v1/correction-suggestions/bulk-approve", { suggestion_ids: ids });
+      onApproved(ids);
+      toast.success(`${ids.length} correção(ões) C190 aprovada(s)`);
+    } catch { toast.error("Erro ao aprovar correções C190"); }
+    finally { setApproving(null); }
+  }
+
+  async function revertGroup(idx: number) {
+    const g = groups[idx];
+    const key = `${g.original}|${g.suggested}`;
+    setReverting(key);
+    try {
+      const res = await api.post<{ reverted_count: number }>("/api/v1/correction-suggestions/revert-batch", {
+        efd_file_id: efdFileId,
+        rule_code: "CONF-C190-C100",
+        original_value: g.original,
+        suggested_value: g.suggested,
+      });
+      onReverted(g.original, g.suggested);
+      toast.success(`${res.reverted_count} correção(ões) revertida(s)`);
+    } catch { toast.error("Erro ao reverter correções C190"); }
+    finally { setReverting(null); }
+  }
+
+  return (
+    <div className="border-t">
+      <div className="px-4 py-2 bg-blue-50/40">
+        <p className="text-xs font-semibold text-blue-700">
+          Correções C190×C100 — {groups.length} grupo(s) com divergência de vl_opr
+        </p>
+      </div>
+      {groups.map((g, idx) => {
+        const key = `${g.original}|${g.suggested}`;
+        const isExpanded = expanded[idx] ?? false;
+        const pending = g.items.filter(s => s.status === "pending");
+        const approvedCount = g.items.filter(s => s.status === "approved").length;
+        const allChecked = pending.every(s => checked[s.id]);
+        const checkedIds = pending.filter(s => checked[s.id]).map(s => s.id);
+
+        return (
+          <div key={idx} className="border-b last:border-b-0">
+            <div
+              className="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-muted/20"
+              onClick={() => setExpanded(e => ({ ...e, [idx]: !isExpanded }))}
+            >
+              <div className="flex items-center gap-2">
+                {isExpanded ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />}
+                <input
+                  type="checkbox"
+                  checked={allChecked && pending.length > 0}
+                  onChange={() => toggleGroup(idx, allChecked)}
+                  onClick={e => e.stopPropagation()}
+                  className="h-3.5 w-3.5"
+                />
+                <span className="text-xs font-medium">
+                  CFOP {g.cfop ?? "?"} / CST {g.cst ?? "?"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {pending.length} pendente(s)
+                  {approvedCount > 0 && ` · ${approvedCount} aprovada(s)`}
+                </span>
+                <span className="text-xs text-destructive font-mono">
+                  R$ {parseFloat(g.original).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+                <span className="text-xs">→</span>
+                <span className="text-xs text-green-700 font-mono">
+                  R$ {parseFloat(g.suggested).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                <Button size="sm" variant="outline" className="h-6 text-xs px-2"
+                  disabled={!checkedIds.length || approving === key}
+                  onClick={() => confirmGroup(idx)}>
+                  {approving === key ? "..." : "Confirmar"}
+                </Button>
+                <Button size="sm" variant="ghost" className="h-6 text-xs px-2 text-muted-foreground"
+                  disabled={!approvedCount || reverting === key}
+                  onClick={() => revertGroup(idx)}>
+                  {reverting === key ? "..." : "Reverter"}
+                </Button>
+              </div>
+            </div>
+
+            {isExpanded && (
+              <div className="px-10 pb-2 space-y-1">
+                {g.items.map(s => (
+                  <div key={s.id} className="flex items-center gap-2 text-xs py-0.5">
+                    <input
+                      type="checkbox"
+                      checked={!!checked[s.id]}
+                      disabled={s.status !== "pending"}
+                      onChange={() => setChecked(c => ({ ...c, [s.id]: !c[s.id] }))}
+                      className="h-3 w-3"
+                    />
+                    <span className="font-mono text-muted-foreground">linha {s.line_number}</span>
+                    <Badge variant={s.status === "approved" ? "default" : "outline"} className="text-xs py-0">
+                      {s.status === "approved" ? "Aprovado" : "Pendente"}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

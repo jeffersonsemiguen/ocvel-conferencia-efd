@@ -43,6 +43,34 @@ class BulkRejectBody(BaseModel):
     reason: str
 
 
+class RevertBatchBody(BaseModel):
+    efd_file_id: uuid.UUID
+    rule_code: str
+    original_value: Optional[str] = None
+    suggested_value: Optional[str] = None
+
+
+@router.post("/correction-suggestions/revert-batch")
+def revert_suggestions_batch(body: RevertBatchBody, db: Session = Depends(get_db)):
+    q = db.query(CorrectionSuggestion).filter(
+        CorrectionSuggestion.efd_file_id == body.efd_file_id,
+        CorrectionSuggestion.rule_code == body.rule_code,
+        CorrectionSuggestion.status == "approved",
+    )
+    if body.original_value is not None:
+        q = q.filter(CorrectionSuggestion.original_value == body.original_value)
+    if body.suggested_value is not None:
+        q = q.filter(CorrectionSuggestion.suggested_value == body.suggested_value)
+
+    rows = q.all()
+    for s in rows:
+        s.status = "pending"
+        s.approved_by = None
+        s.approved_at = None
+    db.commit()
+    return {"reverted_count": len(rows)}
+
+
 # ── Sprint 6: generate suggestions via new service ─────────────────────────────
 
 @router.post(

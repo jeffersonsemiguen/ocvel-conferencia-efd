@@ -25,6 +25,7 @@ from app.models.fiscal_matrix import CfopCstFullRule, CfopIpiCstRule, Structural
 from app.models.period_analytics import FiscalPeriodRiskSnapshot, FiscalPeriodEvent, ReportPackage
 from app.models.nfe_upload import NfeUpload
 from app.models.nfe_document import NfeDocument
+from app.models.efd_c170 import EfdC170Item
 
 __all__ = [
     "Company", "User", "FiscalPeriod", "EfdFile",

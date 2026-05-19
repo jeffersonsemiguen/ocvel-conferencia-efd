@@ -131,6 +131,10 @@ def run_conference(
     # Persiste findings
     _save_findings(db, run, findings)
 
+    # Gera sugestões de correção C190 (requer run.id já persistido)
+    from app.services.corrections.c190_suggestion_generator import generate_c190_suggestions
+    generate_c190_suggestions(db, run, efd_file_id, tol)
+
     # Registrar evento de conferência concluída
     try:
         from app.services.events.event_service import log_event
