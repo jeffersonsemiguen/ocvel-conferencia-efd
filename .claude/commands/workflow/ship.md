@@ -1,3 +1,8 @@
+---
+name: ship
+description: Archive completed feature with lessons learned (Phase 4)
+---
+
 # Ship Command
 
 > Archive completed feature with lessons learned (Phase 4)

@@ -1,3 +1,8 @@
+---
+name: design
+description: Create architecture and technical specification (Phase 2)
+---
+
 # Design Command
 
 > Create architecture and technical specification in one pass (Phase 2)

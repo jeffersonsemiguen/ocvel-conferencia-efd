@@ -1,3 +1,8 @@
+---
+name: iterate
+description: Update any phase document when requirements or design changes
+---
+
 # Iterate Command
 
 > Update any phase document when requirements or design changes (Cross-Phase)

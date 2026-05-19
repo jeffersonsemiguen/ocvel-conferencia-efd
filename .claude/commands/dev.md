@@ -1,3 +1,8 @@
+---
+name: dev
+description: Dev Loop - Agentic Development (Level 2) with structured iteration
+---
+
 # /dev Command
 
 > **Dev Loop** — Agentic Development (Level 2) with structured iteration and intelligent routing.

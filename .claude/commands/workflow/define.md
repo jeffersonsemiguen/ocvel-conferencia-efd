@@ -1,3 +1,8 @@
+---
+name: define
+description: Capture requirements and validate them in one pass (Phase 1)
+---
+
 # Define Command
 
 > Capture requirements and validate them in one pass (Phase 1)

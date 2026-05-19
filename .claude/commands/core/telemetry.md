@@ -1,3 +1,8 @@
+---
+name: telemetry
+description: Generate insights from your AgentSpec usage
+---
+
 # /telemetry
 
 > Generate insights from your AgentSpec usage

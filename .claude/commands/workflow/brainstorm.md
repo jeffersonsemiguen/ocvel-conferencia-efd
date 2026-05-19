@@ -1,3 +1,8 @@
+---
+name: brainstorm
+description: Collaborative exploration before requirements capture (Phase 0)
+---
+
 # Brainstorm Command
 
 > Collaborative exploration before requirements capture (Phase 0)
