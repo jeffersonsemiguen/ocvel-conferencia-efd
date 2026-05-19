@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { PlusIcon, UploadIcon, Trash2Icon } from "lucide-react";
+import { PlusIcon, UploadIcon, Trash2Icon, PencilIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -235,6 +235,222 @@ function NovaEmpresaDialog({ onCreated }: { onCreated: (c: Company) => void }) {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Inscrições estaduais auxiliares (ST em outros estados — registro 0015)</Label>
+                <Button type="button" size="sm" variant="outline" onClick={addInscricao}>
+                  <PlusIcon className="w-3 h-3 mr-1" /> Adicionar
+                </Button>
+              </div>
+              {form.inscricoes_auxiliares.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhuma inscrição auxiliar cadastrada.</p>
+              ) : (
+                <div className="space-y-2">
+                  {form.inscricoes_auxiliares.map((insc, idx) => (
+                    <div key={idx} className="flex gap-2 items-end">
+                      <div className="w-20">
+                        <Label className="text-xs">UF</Label>
+                        <select
+                          value={insc.uf}
+                          onChange={(e) => setInscricao(idx, "uf", e.target.value)}
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm"
+                        >
+                          <option value="">--</option>
+                          {ESTADOS.map((uf) => (<option key={uf} value={uf}>{uf}</option>))}
+                        </select>
+                      </div>
+                      <div className="flex-1">
+                        <Label className="text-xs">Inscrição estadual</Label>
+                        <Input
+                          value={insc.ie}
+                          onChange={(e) => setInscricao(idx, "ie", e.target.value)}
+                          placeholder="IE auxiliar"
+                        />
+                      </div>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => removeInscricao(idx)}>
+                        <Trash2Icon className="w-3.5 h-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button type="submit" disabled={loading}>{loading ? "Salvando..." : "Salvar"}</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Dialog de edição de empresa ────────────────────────────────────────────
+
+function EditarEmpresaDialog({ company, onUpdated }: { company: Company; onUpdated: (c: Company) => void }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState<FormState>({
+    cnpj: company.cnpj,
+    name: company.name,
+    trade_name: company.trade_name ?? "",
+    state_registration: company.state_registration ?? "",
+    state: company.state ?? "",
+    uses_ciap: company.uses_ciap,
+    bloco_k_tipo: company.bloco_k_tipo,
+    inventario_mes: company.inventario_mes ? String(company.inventario_mes) : "",
+    inventario_competencia_ref: (company.inventario_competencia_ref as InventarioRef | "") ?? "",
+    inscricoes_auxiliares: company.inscricoes_auxiliares ?? [],
+  });
+
+  function update<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+  function addInscricao() {
+    update("inscricoes_auxiliares", [...form.inscricoes_auxiliares, { uf: "", ie: "" }]);
+  }
+  function removeInscricao(idx: number) {
+    update("inscricoes_auxiliares", form.inscricoes_auxiliares.filter((_, i) => i !== idx));
+  }
+  function setInscricao(idx: number, field: "uf" | "ie", value: string) {
+    update("inscricoes_auxiliares", form.inscricoes_auxiliares.map((it, i) =>
+      i === idx ? { ...it, [field]: field === "uf" ? value.toUpperCase() : value } : it
+    ));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const payload = {
+        name: form.name,
+        trade_name: form.trade_name || null,
+        state_registration: form.state_registration || null,
+        state: form.state || null,
+        uses_ciap: form.uses_ciap,
+        bloco_k_tipo: form.bloco_k_tipo,
+        inventario_mes: form.inventario_mes ? Number(form.inventario_mes) : null,
+        inventario_competencia_ref: form.inventario_competencia_ref || null,
+        inscricoes_auxiliares: form.inscricoes_auxiliares.filter((i) => i.uf && i.ie),
+      };
+      const updated = await api.patch<Company>(`/api/v1/companies/${company.id}`, payload);
+      onUpdated(updated);
+      setOpen(false);
+      toast.success("Empresa atualizada com sucesso");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar empresa");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={
+        <Button size="sm" variant="ghost" className="h-7 px-2">
+          <PencilIcon className="w-3.5 h-3.5" />
+        </Button>
+      } />
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar empresa</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>CNPJ</Label>
+              <Input value={formatCnpj(form.cnpj)} disabled className="text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit_state">UF</Label>
+              <select
+                id="edit_state"
+                value={form.state}
+                onChange={(e) => update("state", e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+              >
+                <option value="">Selecione</option>
+                {ESTADOS.map((uf) => (<option key={uf} value={uf}>{uf}</option>))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="edit_name">Razão social *</Label>
+            <Input id="edit_name" required value={form.name} onChange={(e) => update("name", e.target.value)} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="edit_trade">Nome fantasia</Label>
+              <Input id="edit_trade" value={form.trade_name} onChange={(e) => update("trade_name", e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit_ie">Inscrição estadual</Label>
+              <Input id="edit_ie" value={form.state_registration} onChange={(e) => update("state_registration", e.target.value)} />
+            </div>
+          </div>
+
+          <div className="border-t pt-4 space-y-3">
+            <p className="text-sm font-semibold">Perfil fiscal (usado para validações)</p>
+
+            <div className="flex items-center gap-2">
+              <input
+                id="edit_ciap"
+                type="checkbox"
+                checked={form.uses_ciap}
+                onChange={(e) => update("uses_ciap", e.target.checked)}
+                className="h-4 w-4"
+              />
+              <Label htmlFor="edit_ciap" className="text-sm font-normal cursor-pointer">
+                Utiliza CIAP — exige Bloco G no arquivo EFD
+              </Label>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Bloco K</Label>
+                <select
+                  value={form.bloco_k_tipo}
+                  onChange={(e) => update("bloco_k_tipo", e.target.value as BlocoKTipo)}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                >
+                  <option value="nao_aplica">Não se aplica</option>
+                  <option value="simplificado">Simplificado</option>
+                  <option value="completo">Completo</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label>Mês do inventário (Bloco H)</Label>
+                <select
+                  value={form.inventario_mes}
+                  onChange={(e) => update("inventario_mes", e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                >
+                  <option value="">Não declara</option>
+                  {MESES.map((m, i) => (<option key={i + 1} value={i + 1}>{m}</option>))}
+                </select>
+              </div>
+            </div>
+
+            {form.inventario_mes && (
+              <div className="space-y-1">
+                <Label>Referência do inventário</Label>
+                <select
+                  value={form.inventario_competencia_ref}
+                  onChange={(e) => update("inventario_competencia_ref", e.target.value as InventarioRef | "")}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                >
+                  <option value="">Selecione</option>
+                  <option value="mes_anterior">Mês anterior</option>
+                  <option value="dezembro_ano_anterior">Dezembro do ano anterior</option>
+                  <option value="customizado">Customizado</option>
+                </select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Inscrições estaduais auxiliares</Label>
                 <Button type="button" size="sm" variant="outline" onClick={addInscricao}>
                   <PlusIcon className="w-3 h-3 mr-1" /> Adicionar
                 </Button>
@@ -530,9 +746,17 @@ export default function EmpresasPage() {
                     {company.inscricoes_auxiliares?.length ?? 0}
                   </TableCell>
                   <TableCell>
-                    <a href={`/empresas/${company.id}`}>
-                      <Button size="sm" variant="outline">Abrir</Button>
-                    </a>
+                    <div className="flex gap-1 items-center">
+                      <EditarEmpresaDialog
+                        company={company}
+                        onUpdated={(updated) =>
+                          setCompanies((prev) => prev.map((c) => c.id === updated.id ? updated : c))
+                        }
+                      />
+                      <a href={`/empresas/${company.id}`}>
+                        <Button size="sm" variant="outline">Abrir</Button>
+                      </a>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
