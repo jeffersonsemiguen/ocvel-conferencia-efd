@@ -1,0 +1,146 @@
+# COD_SIT — Situacao do Documento Fiscal
+# MCP Validated: 2026-05-18
+# Fonte: Guia Pratico EFD-ICMS/IPI — SPED/RFB (versao 3.x), Tabela de COD_SIT
+# Aplicavel a: C100, D100, A100 e demais registros de cabecalho de documentos fiscais
+
+version: "1.0"
+description: >
+  Tabela oficial dos codigos de situacao do documento fiscal (COD_SIT).
+  Determina se o documento deve ser incluido nos totais de conferencia,
+  apuracao de ICMS/IPI e demais calculos fiscais.
+
+values:
+
+  "00":
+    descricao: "Normal"
+    situacao: "Documento emitido e escriturado regularmente"
+    incluir_conferencia: true
+    incluir_apuracao: true
+    gera_credito_debito: true
+    observacoes: >
+      Situacao padrao para documentos validos. Todo documento com COD_SIT=00
+      deve ter seus valores de ICMS, IPI, PIS e COFINS considerados na apuracao.
+
+  "01":
+    descricao: "Cancelada"
+    situacao: "Documento cancelado dentro do prazo legal"
+    incluir_conferencia: false
+    incluir_apuracao: false
+    gera_credito_debito: false
+    observacoes: >
+      Documento cancelado regularmente. Por convencao, os campos de valor
+      (VL_DOC, VL_BC_ICMS, VL_ICMS, etc.) devem ser zerados ou informados
+      com os valores originais dependendo da versao do leiaute e da SEFAZ.
+      Nao gera debito nem credito na apuracao.
+
+  "02":
+    descricao: "Cancelada extemporanea"
+    situacao: "Documento cancelado apos o prazo legal"
+    incluir_conferencia: false
+    incluir_apuracao: false
+    gera_credito_debito: false
+    observacoes: >
+      Cancelamento fora do prazo. Tratamento fiscal especifico por UF.
+      Geralmente nao incluso nos totais da apuracao, mas pode exigir
+      ajuste via E111 dependendo da legislacao estadual.
+
+  "03":
+    descricao: "Denegada"
+    situacao: "Autorizacao negada pela SEFAZ"
+    incluir_conferencia: false
+    incluir_apuracao: false
+    gera_credito_debito: false
+    observacoes: >
+      NF-e ou CT-e com autorizacao negada pela SEFAZ. O documento existe
+      na base do emitente mas nao tem validade fiscal. Nao deve gerar
+      valores na apuracao.
+
+  "04":
+    descricao: "Numeracao inutilizada"
+    situacao: "Numero do documento inutilizado junto a SEFAZ"
+    incluir_conferencia: false
+    incluir_apuracao: false
+    gera_credito_debito: false
+    observacoes: >
+      Numeracao inutilizada antes de uso (ex: falha de emissao). Registrado
+      para controle da numeracao. Sem valores fiscais.
+
+  "05":
+    descricao: "Complementar extemporanea"
+    situacao: "Nota fiscal complementar emitida apos o periodo original"
+    incluir_conferencia: true
+    incluir_apuracao: true
+    gera_credito_debito: true
+    observacoes: >
+      Documento emitido para complementar valores de NF anterior (ex: diferenca
+      de preco, ICMS complementar). Deve ser incluido na apuracao do periodo
+      em que foi emitida a NF complementar, nao do periodo original.
+
+  "06":
+    descricao: "Regime Especial / Complementar"
+    situacao: "Documento emitido sob regime especial ou como complementar"
+    incluir_conferencia: true
+    incluir_apuracao: true
+    gera_credito_debito: true
+    observacoes: >
+      Documento valido — emitido sob regime especial de tributacao ou como
+      complemento. Incluir normalmente na apuracao.
+
+  "07":
+    descricao: "Emissao por contingencia"
+    situacao: "Documento emitido em contingencia (offline, SCAN, DPEC, etc.)"
+    incluir_conferencia: true
+    incluir_apuracao: true
+    gera_credito_debito: true
+    observacoes: >
+      NF-e / CT-e emitido em modo de contingencia por falha no sistema SEFAZ.
+      Documento valido e deve ser incluido na apuracao. Pode exigir
+      homologacao posterior.
+
+  "08":
+    descricao: "Com ajuste"
+    situacao: "Documento com ajuste registrado (diferenca aceita)"
+    incluir_conferencia: true
+    incluir_apuracao: true
+    gera_credito_debito: true
+    observacoes: >
+      Documento valido mas com algum ajuste aplicado (ex: desconto posterior,
+      correcao aceita). Incluir na apuracao com os valores ajustados.
+
+# Grupos para uso em filtros de conferencia
+groups:
+
+  validos_para_apuracao:
+    description: "COD_SIT que devem ser incluidos nos totais da apuracao"
+    values: ["00", "05", "06", "07", "08"]
+
+  invalidos_cancelados:
+    description: "COD_SIT de documentos cancelados ou invalidos — excluir da apuracao"
+    values: ["01", "02", "03", "04"]
+
+  exigem_atencao:
+    description: "COD_SIT validos mas que exigem verificacao adicional"
+    values: ["05", "07", "08"]
+    notes: >
+      05 pode gerar ajuste em E111; 07 pode precisar de homologacao;
+      08 pode ter diferenca de valor em relacao a NF original.
+
+# Aplicabilidade por registro
+applicable_registers:
+  C100:
+    field: COD_SIT
+    notes: "Principal aplicacao — documentos de mercadorias"
+  D100:
+    field: COD_SIT
+    notes: "Documentos de transporte (CT-e)"
+  A100:
+    field: COD_SIT
+    notes: "Documentos de servicos (NFS-e)"
+
+# Regra de negocio para conferencia
+conferencia_filter:
+  include_only: ["00", "05", "06", "07", "08"]
+  rationale: >
+    Documentos com COD_SIT cancelado (01, 02), denegado (03) ou inutilizado (04)
+    nao geram obrigacao tributaria e nao devem compor os valores conferidos.
+    Incluir apenas documentos com situacao valida para apuracao.

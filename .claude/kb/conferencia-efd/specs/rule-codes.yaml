@@ -1,0 +1,168 @@
+# Catalogo de Codigos de Regra — Conferencia EFD
+# MCP Validated: 2026-05-18
+# Fonte: app/services/conference/engine.py
+
+version: "1.0"
+description: >
+  Todos os codigos de regra implementados na engine de conferencia.
+  severity_default pode ser sobrescrito por parametro ou regra especifica.
+
+rules:
+
+  # ── Consistencia Interna (sem referencia externa) ───────────────────────
+
+  - code: CONF-C190-C100
+    description: Soma dos C190 filhos deve bater com totais do C100 pai
+    registers: [C190, C100]
+    severity_default: divergencia_monetaria
+    finding_types: [divergencia_monetaria, ausencia_registro]
+    fields_checked: [vl_bc_icms, vl_icms, vl_bc_icms_st, vl_icms_st, vl_ipi]
+    applies_to: documentos com cod_sit em [00, 01, 06, 07, 08]
+    requires_external_reference: false
+
+  # ── Compatibilidade de Codigos ──────────────────────────────────────────
+
+  - code: CONF-CFOP-CST
+    description: Compatibilidade CFOP x CST — versao simples (prefixo)
+    registers: [C190]
+    severity_default: alerta
+    finding_types: [incompatibilidade]
+    requires_external_reference: false
+    notes: versao simplificada; versao completa e CONF-CFOP-CST-MATRIX
+
+  - code: CONF-CFOP-CST-MATRIX
+    description: Compatibilidade CFOP x CST contra matriz configuravel com vigencia
+    registers: [C190, C170]
+    severity_default: alerta
+    finding_types: [incompatibilidade]
+    requires_external_reference: false
+    table: cfop_cst_rules
+
+  # ── Conferencia Monetaria (com referencia externa) ──────────────────────
+
+  - code: CONF-C190-ENTRADA
+    description: Entradas EFD (C190 ind_oper=0) vs referencia por CFOP+CST
+    registers: [C190]
+    severity_default: divergencia_monetaria
+    finding_types: [divergencia_monetaria, ausencia_referencia, ausencia_efd]
+    operation_type: entrada
+    requires_external_reference: true
+    reference_table: apuracao_reference_values
+
+  - code: CONF-C190-SAIDA
+    description: Saidas EFD (C190 ind_oper=1) vs referencia por CFOP+CST
+    registers: [C190]
+    severity_default: divergencia_monetaria
+    finding_types: [divergencia_monetaria, ausencia_referencia, ausencia_efd]
+    operation_type: saida
+    requires_external_reference: true
+    reference_table: apuracao_reference_values
+
+  - code: CONF-E110
+    description: Apuracao ICMS proprio E110 vs referencia externa
+    registers: [E110]
+    severity_default: divergencia_monetaria
+    finding_types: [divergencia_monetaria, ausencia_registro]
+    operation_type: apuracao_icms
+    requires_external_reference: true
+    fields_checked:
+      - vl_tot_debitos
+      - vl_tot_creditos
+      - vl_sld_apurado
+      - vl_icms_recolher
+      - vl_sld_credor_transportar
+
+  - code: CONF-E520
+    description: Apuracao IPI E520 vs referencia externa
+    registers: [E520]
+    severity_default: divergencia_monetaria
+    finding_types: [divergencia_monetaria, ausencia_registro]
+    operation_type: apuracao_ipi
+    requires_external_reference: true
+
+  - code: CONF-E510
+    description: Consolidacao IPI E510 por CFOP+CST_IPI vs referencia
+    registers: [E510]
+    severity_default: divergencia_monetaria
+    finding_types: [divergencia_monetaria, ausencia_referencia, ausencia_efd]
+    operation_type: apuracao_ipi
+    requires_external_reference: true
+
+  - code: CONF-REF-PENDENTE
+    description: Referencias de apuracao com is_reviewed=False
+    registers: []
+    severity_default: observacao
+    finding_types: [sem_referencia_revisada]
+    requires_external_reference: false
+    notes: Gerado antes das demais conferencias para alertar baixa confiabilidade
+
+  # ── Ajustes Estaduais (Parana) ──────────────────────────────────────────
+
+  - code: REGRA-PR-001
+    description: Codigo de ajuste PR em E111 inexistente ou fora de vigencia
+    registers: [E111]
+    severity_default: alerta
+    finding_types: [ajuste_invalido]
+    table: pr_adjustments
+
+  - code: REGRA-PR-002
+    description: Codigo PR exige E112 mas E112 ausente
+    registers: [E112]
+    severity_default: alerta
+    finding_types: [ausencia_registro]
+    table: pr_adjustments
+
+  - code: REGRA-PR-003
+    description: E113 referencia documento C100 inexistente no arquivo
+    registers: [E113, C100]
+    severity_default: alerta
+    finding_types: [ajuste_invalido]
+    table: pr_adjustments
+
+  # ── Cadastros (Bloco 0) ─────────────────────────────────────────────────
+
+  - code: REGRA-CAD-001
+    description: C100 referencia participante (cod_part) sem cadastro no 0150
+    registers: [C100, "0150"]
+    severity_default: critico
+    finding_types: [cadastro_ausente]
+    requires_external_reference: false
+
+  - code: REGRA-PART-001
+    description: C190 referencia item sem cadastro no 0200
+    registers: [C190, "0200"]
+    severity_default: alerta
+    finding_types: [cadastro_ausente]
+    requires_external_reference: false
+
+  # ── Estrutural (Blocos H, G, K) ─────────────────────────────────────────
+
+  - code: REGRA-H-001
+    description: H005 presente mas sem itens H010 (inventario vazio)
+    registers: [H005, H010]
+    severity_default: alerta
+    finding_types: [ausencia_registro]
+    requires_external_reference: false
+
+  - code: REGRA-H-002
+    description: VL_INV do H005 diverge da soma dos H010
+    registers: [H005, H010]
+    severity_default: divergencia_monetaria
+    finding_types: [divergencia_monetaria]
+    requires_external_reference: false
+
+severity_definitions:
+  critico: Impede uso correto do arquivo; dado invalido ou ausencia grave
+  alerta: Pode causar rejeicao no PVA ou risco de autuacao fiscal
+  divergencia_monetaria: Valor EFD difere da referencia alem da tolerancia
+  observacao: Situacao atipica que merece atencao sem ser necessariamente erro
+
+finding_type_definitions:
+  divergencia_monetaria: Valor calculado na EFD difere do valor de referencia
+  ausencia_referencia: Chave CFOP+CST existe na EFD mas nao na referencia
+  ausencia_efd: Chave existe na referencia mas nao na EFD
+  sem_referencia_revisada: Referencia ainda nao revisada pelo usuario
+  ausencia_registro: Registro obrigatorio ausente ou vazio
+  cadastro_ausente: Participante ou produto referenciado sem cadastro no bloco 0
+  ajuste_invalido: Codigo de ajuste estadual invalido ou fora de vigencia
+  incompatibilidade: Combinacao CFOP+CST incompativel pela matriz configurada

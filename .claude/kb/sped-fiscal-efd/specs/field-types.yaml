@@ -1,0 +1,119 @@
+# EFD Field Types — Tipos de Campo do EFD-ICMS/IPI
+# MCP Validated: 2026-05-18
+# Fonte: Guia Pratico EFD-ICMS/IPI — SPED/RFB (versao 3.x), Secao 3 — Tipos de Campos
+
+version: "1.0"
+description: >
+  Tipos de campo definidos pelo leiaute oficial EFD-ICMS/IPI.
+  Todo campo em um registro EFD possui um tipo que governa formatacao,
+  alinhamento e validacao.
+
+field_types:
+
+  C:
+    name: Character
+    description: >
+      Campo alfanumerico. Aceita letras, numeros e caracteres especiais.
+      Alinhamento a esquerda no arquivo. Sem padding obrigatorio de espacos.
+    format: "texto livre"
+    examples:
+      - "C100"
+      - "EMPRESA EXEMPLO LTDA"
+      - "12345678000195"
+      - "001"
+    notes:
+      - Campos C vazios sao representados por dois pipes adjacentes: ||
+      - Nao ha limite de tamanho especificado pelo tipo (o limite e do campo individual)
+      - Codigos de registro (primeiro campo) sao sempre tipo C
+
+  N:
+    name: Numeric
+    description: >
+      Campo numerico, possivelmente decimal. Usa virgula como separador decimal
+      (padrao brasileiro). Usa ponto como separador de milhar quando presente.
+      Sem prefixo de sinal (positivo implicito).
+    format: "N,NN ou N.NNN,NN"
+    decimal_separator: ","
+    thousands_separator: "."
+    examples:
+      - "1200,00"
+      - "10000,00"
+      - "1.234.567,89"
+      - "0,00"
+      - "12,00"
+    python_parsing: >
+      valor_str.replace('.', '').replace(',', '.')
+      Decimal(valor_str) ou float(valor_str)
+    notes:
+      - Campos N vazios (||) representam zero ou campo nao informado
+      - Aliquotas sao N com 2 casas decimais: "12,00" para 12%
+      - Quantidades podem ter ate 10 casas decimais
+      - Valores monetarios tem ate 2 casas decimais
+
+  D:
+    name: Date
+    description: >
+      Campo data no formato DDMMAAAA (dia, mes, ano com 4 digitos).
+      Sem separadores entre os componentes.
+    format: "DDMMAAAA"
+    length: 8
+    examples:
+      - "01012024"      # 1 de janeiro de 2024
+      - "31122023"      # 31 de dezembro de 2023
+      - "15032024"      # 15 de marco de 2024
+    python_parsing: >
+      datetime.strptime(valor, '%d%m%Y').date()
+    notes:
+      - Campos D vazios (||) indicam data nao informada (permitido em alguns campos como DT_E_S)
+      - O formato e fixo: dia com 2 digitos, mes com 2 digitos, ano com 4 digitos
+      - Nao confundir com formato ISO (AAAA-MM-DD) usado internamente nos sistemas
+
+  NS:
+    name: "Numeric with Sign"
+    description: >
+      Campo numerico com sinal explicito. Mesmo formato do tipo N mas
+      pode ser precedido por '+' ou '-' para indicar sentido do valor.
+    format: "[+/-]N,NN"
+    examples:
+      - "+1200,00"
+      - "-500,00"
+      - "1200,00"      # positivo sem sinal explicito tambem e valido
+    notes:
+      - Usado em campos de saldo que podem ser credor (negativo) ou devedor (positivo)
+      - Nem todos os campos de apuracao usam NS; verifique o campo especifico no leiaute
+      - Na pratica, muitos arquivos omitem o sinal '+' para valores positivos
+
+# Mapeamento Python para cada tipo
+python_type_mapping:
+  C: "str"
+  N: "Decimal | None"
+  D: "date | None"
+  NS: "Decimal | None"
+
+# Tratamento de campos vazios por tipo
+empty_field_handling:
+  C:
+    representation: "||"
+    python_value: "None ou ''"
+    notes: "Campos C obrigatorios nao podem ser vazios"
+  N:
+    representation: "||"
+    python_value: "None ou Decimal('0')"
+    notes: "Campos N opcionais vazios devem ser tratados como zero em calculos"
+  D:
+    representation: "||"
+    python_value: "None"
+    notes: "Campos D opcionais podem ser None (ex: DT_E_S em saidas)"
+  NS:
+    representation: "||"
+    python_value: "None ou Decimal('0')"
+
+# Exemplos de parsing de linha completa
+parsing_example:
+  raw_line: "|C100|0|1|FORN001|55|00|001|000100|43240198765432000111550010000010000000000001|01032024|03032024|12000,00|0|0,00|0,00|12000,00|0|0,00|0,00|0,00|1440,00|1440,00|0,00|0,00|0,00|0,00|0,00|0,00|0,00|"
+  steps:
+    - "strip() para remover newline"
+    - "split('|') — gera lista com primeiro e ultimo elemento vazios"
+    - "campos = linha.strip().split('|')[1:-1]  # remove bordas vazias"
+    - "campos[0] == 'C100'  # codigo do registro"
+    - "Mapear cada campos[i] para o tipo do campo na posicao i"

@@ -23,6 +23,8 @@ from app.models.efd_bloco_h import EfdBlocoH005, EfdBlocoH010
 from app.models.efd_bloco_gk import EfdBlocoG110, EfdBlocoG125, EfdBlocoK100, EfdBlocoK200
 from app.models.fiscal_matrix import CfopCstFullRule, CfopIpiCstRule, StructuralObligationRule
 from app.models.period_analytics import FiscalPeriodRiskSnapshot, FiscalPeriodEvent, ReportPackage
+from app.models.nfe_upload import NfeUpload
+from app.models.nfe_document import NfeDocument
 
 __all__ = [
     "Company", "User", "FiscalPeriod", "EfdFile",

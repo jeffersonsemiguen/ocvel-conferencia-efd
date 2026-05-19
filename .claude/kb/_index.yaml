@@ -2,7 +2,7 @@
 # Machine-readable registry for KB domains
 
 version: "1.0"
-last_updated: "2026-05-05"
+last_updated: "2026-05-18"
 
 # File Size Limits (SINGLE SOURCE OF TRUTH)
 limits:
@@ -428,3 +428,78 @@ domains:
         path: patterns/substituicao-retificacao.md
       - name: conferencia-cruzamento
         path: patterns/conferencia-cruzamento.md
+
+  sped-fiscal-efd:
+    name: SPED Fiscal EFD — Layout Oficial EFD-ICMS/IPI
+    description: Leiaute oficial do arquivo EFD-ICMS/IPI — estrutura do arquivo, blocos, registros, campos, tipos de dado e tabelas de dominio (COD_SIT). Base para parsers, validadores e ferramentas de conferencia fiscal.
+    path: sped-fiscal-efd/
+    mcp_validated: "2026-05-18"
+    entry_points:
+      index: index.md
+      quick_reference: quick-reference.md
+    concepts:
+      - name: file-structure
+        path: concepts/file-structure.md
+        confidence: 0.97
+      - name: block-overview
+        path: concepts/block-overview.md
+        confidence: 0.97
+    patterns:
+      - name: register-0200
+        path: patterns/register-0200.md
+      - name: register-c100
+        path: patterns/register-c100.md
+      - name: register-c170
+        path: patterns/register-c170.md
+      - name: register-c190
+        path: patterns/register-c190.md
+      - name: register-e110
+        path: patterns/register-e110.md
+    specs:
+      - name: field-types
+        path: specs/field-types.yaml
+      - name: cod-sit-values
+        path: specs/cod-sit-values.yaml
+
+  conferencia-efd:
+    name: Conferencia EFD — Auditoria e Reconciliacao
+    description: Referencia tecnica para auditoria, conferencia e reconciliacao de arquivos EFD ICMS/IPI — parsing, pipeline de validacao, reconciliacao de registros, codigos de regra e findings fiscais
+    path: conferencia-efd/
+    mcp_validated: "2026-05-18"
+    entry_points:
+      index: index.md
+      quick_reference: quick-reference.md
+    concepts:
+      - name: conferencia-vs-validacao
+        path: concepts/conferencia-vs-validacao.md
+        confidence: 0.97
+      - name: registros-chave
+        path: concepts/registros-chave.md
+        confidence: 0.97
+      - name: cst-cfop
+        path: concepts/cst-cfop.md
+        confidence: 0.97
+      - name: apuracao-icms-ipi
+        path: concepts/apuracao-icms-ipi.md
+        confidence: 0.97
+      - name: findings
+        path: concepts/findings.md
+        confidence: 0.97
+    patterns:
+      - name: parser-registros
+        path: patterns/parser-registros.md
+      - name: pipeline-validacao
+        path: patterns/pipeline-validacao.md
+      - name: reconciliacao-c190-c100
+        path: patterns/reconciliacao-c190-c100.md
+      - name: reconciliacao-e110
+        path: patterns/reconciliacao-e110.md
+      - name: matriz-cfop-cst
+        path: patterns/matriz-cfop-cst.md
+      - name: ajustes-pr
+        path: patterns/ajustes-pr.md
+    specs:
+      - name: rule-codes
+        path: specs/rule-codes.yaml
+      - name: register-fields
+        path: specs/register-fields.yaml

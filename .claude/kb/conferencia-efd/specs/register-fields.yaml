@@ -1,0 +1,158 @@
+# Campos Canonicos dos Registros EFD — Conferencia
+# MCP Validated: 2026-05-18
+# Fonte: app/models/, app/services/efd_parser/efd_structured_parser.py
+
+version: "1.0"
+description: >
+  Campos criticos de cada registro EFD usados na conferencia.
+  Tipo decimal: virgula como separador no arquivo TXT; Decimal no Python.
+
+registers:
+
+  "0000":
+    description: Header do arquivo EFD
+    fields:
+      COD_VER: {type: str, required: true, description: "Versao do leiaute"}
+      COD_FIN: {type: str, required: true, description: "Finalidade: 0=original, 1=substituto"}
+      DT_INI: {type: date_DDMMAAAA, required: true}
+      DT_FIN: {type: date_DDMMAAAA, required: true}
+      NOME: {type: str, required: true}
+      CNPJ: {type: str14, required: true}
+      UF: {type: str2, required: true}
+      IE: {type: str, required: false}
+      COD_MUN: {type: str7, required: true}
+      COD_PERFIL: {type: str1, required: true, description: "A, B ou C"}
+      IND_ATIV: {type: str1, required: true, description: "0=industrial, 1=outros"}
+
+  "0150":
+    description: Cadastro de participantes
+    fields:
+      COD_PART: {type: str, required: true, description: "Chave do participante no arquivo"}
+      NOME: {type: str, required: true}
+      CNPJ: {type: str14, required: false}
+      CPF: {type: str11, required: false}
+      IE: {type: str, required: false}
+      COD_MUN: {type: str7, required: false}
+
+  "0200":
+    description: Cadastro de produtos/itens
+    fields:
+      COD_ITEM: {type: str, required: true, description: "Chave do item no arquivo"}
+      DESCR_ITEM: {type: str, required: true}
+      UNID_INV: {type: str6, required: true}
+      TIPO_ITEM: {type: str2, required: true, description: "00=merc p/revenda, 01=MP etc."}
+      COD_NCM: {type: str8, required: false, description: "Obrigatorio para industria"}
+      COD_GEN: {type: str2, required: false}
+      ALIQ_ICMS: {type: decimal, required: false}
+
+  C100:
+    description: Cabecalho do documento fiscal
+    python_model: app.models.efd_c100.EfdC100Doc
+    fields:
+      IND_OPER: {type: str1, required: true, values: "0=entrada, 1=saida"}
+      IND_EMIT: {type: str1, required: true, values: "0=proprio, 1=terceiros"}
+      COD_PART: {type: str, required: true, description: "Ref. 0150"}
+      COD_MOD: {type: str2, required: true, description: "55=NF-e, 65=NFC-e, 57=CT-e"}
+      COD_SIT: {type: str2, required: true, description: "00=regular, 02=cancelado"}
+      SER: {type: str3, required: false}
+      NUM_DOC: {type: str, required: true}
+      CHV_NFE: {type: str44, required: false}
+      DT_DOC: {type: date_DDMMAAAA, required: true}
+      DT_E_S: {type: date_DDMMAAAA, required: false}
+      VL_DOC: {type: decimal, required: true}
+      VL_BC_ICMS: {type: decimal, required: false}
+      VL_ICMS: {type: decimal, required: false}
+      VL_BC_ICMS_ST: {type: decimal, required: false}
+      VL_ICMS_ST: {type: decimal, required: false}
+      VL_IPI: {type: decimal, required: false}
+
+  C190:
+    description: Analitico por CST+CFOP+aliquota — totalizador do documento
+    python_model: app.models.efd_c190.EfdC190Analytics
+    key: [cst_icms, cfop, aliq_icms]
+    parent: C100
+    fields:
+      CST_ICMS: {type: str3, required: true}
+      CFOP: {type: str4, required: true}
+      ALIQ_ICMS: {type: decimal, required: false}
+      VL_OPR: {type: decimal, required: true, description: "Valor das operacoes — base para referencia"}
+      VL_BC_ICMS: {type: decimal, required: false}
+      VL_ICMS: {type: decimal, required: false}
+      VL_BC_ICMS_ST: {type: decimal, required: false}
+      VL_ICMS_ST: {type: decimal, required: false}
+      VL_RED_BC: {type: decimal, required: false}
+      VL_IPI: {type: decimal, required: false}
+      COD_OBS: {type: str6, required: false}
+
+  E110:
+    description: Apuracao do ICMS proprio
+    python_model: app.models.efd_e110.EfdE110IcmsApuracao
+    fields:
+      VL_TOT_DEBITOS: {type: decimal, required: true}
+      VL_AJ_DEBITOS: {type: decimal, required: false}
+      VL_TOT_AJ_DEBITOS: {type: decimal, required: false}
+      VL_ESTORNOS_CRED: {type: decimal, required: false}
+      VL_TOT_CREDITOS: {type: decimal, required: true}
+      VL_AJ_CREDITOS: {type: decimal, required: false}
+      VL_TOT_AJ_CREDITOS: {type: decimal, required: false}
+      VL_ESTORNOS_DEB: {type: decimal, required: false}
+      VL_SLD_CREDOR_ANT: {type: decimal, required: false}
+      VL_SLD_APURADO: {type: decimal, required: true}
+      VL_TOT_DED: {type: decimal, required: false}
+      VL_ICMS_RECOLHER: {type: decimal, required: false}
+      VL_SLD_CREDOR_TRANSPORTAR: {type: decimal, required: false}
+      DEB_ESP: {type: decimal, required: false}
+
+  E111:
+    description: Ajustes da apuracao do ICMS
+    python_model: app.models.efd_e110.EfdE111IcmsAdjustment
+    parent: E110
+    fields:
+      COD_AJ_APUR: {type: str8, required: true, description: "Codigo do ajuste ex: PR020001"}
+      DESCR_COMPL_AJ: {type: str, required: false}
+      VL_AJ_APUR: {type: decimal, required: true}
+
+  E510:
+    description: Consolidacao do IPI por CST+CFOP
+    python_model: app.models.efd_e510_e520.EfdE510IpiConsolidation
+    key: [cst_ipi, cfop]
+    fields:
+      CST_IPI: {type: str2, required: true}
+      CFOP: {type: str4, required: true}
+      TIP_CALC: {type: str1, required: true}
+      VL_CONT_IPI: {type: decimal, required: false}
+      VL_BC_IPI: {type: decimal, required: false}
+      ALIQ_IPI: {type: decimal, required: false}
+      VL_IPI: {type: decimal, required: false}
+
+  E520:
+    description: Apuracao do IPI
+    python_model: app.models.efd_e510_e520.EfdE520IpiApuracao
+    fields:
+      VL_SD_ANT: {type: decimal, required: false}
+      VL_DEBITOS: {type: decimal, required: false}
+      VL_OUTROS_DEB: {type: decimal, required: false}
+      VL_SLD_APURADO: {type: decimal, required: true}
+      VL_CREDITOS: {type: decimal, required: false}
+      VL_OUTROS_CRED: {type: decimal, required: false}
+      VL_SLD_DEVEDOR: {type: decimal, required: false}
+      VL_SLD_CREDOR: {type: decimal, required: false}
+
+  H005:
+    description: Totais do inventario
+    python_model: app.models.efd_bloco_h.EfdBlocoH005
+    fields:
+      DT_INV: {type: date_DDMMAAAA, required: true}
+      VL_INV: {type: decimal, required: true}
+      MOT_INV: {type: str2, required: true, description: "01=fim de periodo, 02=mudanca tributacao"}
+
+  H010:
+    description: Item do inventario
+    python_model: app.models.efd_bloco_h.EfdBlocoH010
+    parent: H005
+    fields:
+      COD_ITEM: {type: str, required: true, description: "Ref. 0200"}
+      UNID: {type: str6, required: true, description: "Ref. 0190"}
+      QTD: {type: decimal, required: true}
+      VL_UNIT: {type: decimal, required: true}
+      VL_ITEM: {type: decimal, required: true}

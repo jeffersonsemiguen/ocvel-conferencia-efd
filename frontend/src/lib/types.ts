@@ -146,6 +146,32 @@ export interface PdfExtractedPage {
   extracted_text: string | null;
 }
 
+export interface NfeUploadResponse {
+  upload_id: string;
+  total: number;
+  autorizadas: number;
+  canceladas: number;
+  denegadas: number;
+  parsed_error: number;
+  validation_run_id: string;
+}
+
+export interface NfeFinding {
+  id: string;
+  rule_code: string;
+  severity: string;
+  title: string;
+  description: string | null;
+  register_code: string | null;
+  cfop: string | null;
+  cst: string | null;
+  operation_type: string | null;
+  efd_value: number | null;
+  reference_value: number | null;
+  difference_value: number | null;
+  status: string;
+}
+
 export interface ApuracaoReferenceValue {
   id: string;
   fiscal_period_id: string;

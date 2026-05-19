@@ -23,7 +23,7 @@ import { api } from "@/lib/api";
 import type {
   ApuracaoReferenceValue, Company, CorrectedFile, CorrectionSuggestion,
   EfdFile, FiscalPeriod, PdfApuracaoFile, PdfExtractedPage,
-  ValidationFinding, ValidationRun,
+  ValidationFinding, ValidationRun, NfeUploadResponse, NfeFinding,
 } from "@/lib/types";
 
 // ─── Tipos Sprint 8 ───────────────────────────────────────────────────────────
@@ -1267,6 +1267,210 @@ function ConferenciaTab({ period }: { period: FiscalPeriod }) {
   );
 }
 
+// ─── Aba NF-e XML ─────────────────────────────────────────────────────────────
+
+const NFE_SEVERITY_BADGE: Record<string, string> = {
+  critico: "destructive",
+  alerta: "warning",
+  divergencia_monetaria: "secondary",
+  observacao: "outline",
+};
+
+function nfeSeverityLabel(s: string): string {
+  const map: Record<string, string> = {
+    critico: "Crítico", alerta: "Alerta",
+    divergencia_monetaria: "Monetário", observacao: "Observação",
+  };
+  return map[s] ?? s;
+}
+
+function groupNfeByRuleAndCst(findings: NfeFinding[]) {
+  const groups: Record<string, { rule_code: string; original_value: string; suggested_value: string; count: number }> = {};
+  for (const f of findings) {
+    if (f.rule_code !== "CONF-NFE-CST-DIVERGENTE") continue;
+    const orig = f.efd_value != null ? String(Math.round(f.efd_value)) : "";
+    const sugg = f.reference_value != null ? String(Math.round(f.reference_value)) : "";
+    const key = `${f.rule_code}|${orig}|${sugg}`;
+    if (!groups[key]) groups[key] = { rule_code: f.rule_code, original_value: orig, suggested_value: sugg, count: 0 };
+    groups[key].count += 1;
+  }
+  return Object.values(groups);
+}
+
+function NfeTab({ period }: { period: FiscalPeriod }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [summary, setSummary] = useState<NfeUploadResponse | null>(null);
+  const [findings, setFindings] = useState<NfeFinding[]>([]);
+  const [approvingKey, setApprovingKey] = useState<string | null>(null);
+
+  const loadFindings = useCallback(async () => {
+    try {
+      const found = await api.get<NfeFinding[]>(`/api/v1/fiscal-periods/${period.id}/nfe/findings`);
+      setFindings(found);
+    } catch { /* silently */ }
+  }, [period.id]);
+
+  useEffect(() => { loadFindings(); }, [loadFindings]);
+
+  const handleUpload = useCallback(async () => {
+    const files = fileInputRef.current?.files;
+    if (!files || files.length === 0) { toast.error("Selecione um ou mais arquivos XML ou ZIP."); return; }
+    setUploading(true);
+    try {
+      const form = new FormData();
+      for (const file of Array.from(files)) form.append("files", file);
+      const result = await api.upload<NfeUploadResponse>(`/api/v1/fiscal-periods/${period.id}/nfe/upload`, form);
+      setSummary(result);
+      toast.success(`Upload concluído: ${result.autorizadas} autorizadas, ${result.canceladas} canceladas.`);
+      await loadFindings();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro no upload.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }, [period.id, loadFindings]);
+
+  const handleRerun = useCallback(async () => {
+    try {
+      await api.post(`/api/v1/fiscal-periods/${period.id}/nfe/run-crosscheck`, {});
+      await loadFindings();
+      toast.success("Cross-check re-executado.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao re-executar.");
+    }
+  }, [period.id, loadFindings]);
+
+  const handleBatchApprove = useCallback(async (rule_code: string, original_value: string, suggested_value: string) => {
+    const key = `${rule_code}|${original_value}|${suggested_value}`;
+    setApprovingKey(key);
+    try {
+      const result = await api.post<{ approved_count: number }>(
+        `/api/v1/fiscal-periods/${period.id}/nfe/apply-suggestions-batch`,
+        { rule_code, original_value, suggested_value }
+      );
+      toast.success(`${result.approved_count} sugestão(ões) aprovada(s) em lote.`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro na aprovação em lote.");
+    } finally {
+      setApprovingKey(null);
+    }
+  }, [period.id]);
+
+  const cstGroups = groupNfeByRuleAndCst(findings);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Cruzamento de XMLs autorizados pela SEFAZ com os lançamentos da EFD.
+        </p>
+        <Button variant="outline" size="sm" onClick={handleRerun}>
+          <PlayIcon className="mr-2 h-4 w-4" />
+          Re-executar cross-check
+        </Button>
+      </div>
+
+      <div className="rounded-lg border p-4 space-y-3">
+        <p className="text-sm font-medium">Upload de XMLs ou ZIP</p>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xml,.zip"
+          multiple
+          className="block text-sm text-muted-foreground file:mr-3 file:rounded file:border file:px-3 file:py-1 file:text-sm"
+        />
+        <Button onClick={handleUpload} disabled={uploading}>
+          <UploadIcon className="mr-2 h-4 w-4" />
+          {uploading ? "Enviando..." : "Enviar e conferir"}
+        </Button>
+      </div>
+
+      {summary && (
+        <div className="grid grid-cols-5 gap-3 text-center">
+          {[
+            { label: "Total", value: summary.total },
+            { label: "Autorizadas", value: summary.autorizadas },
+            { label: "Canceladas", value: summary.canceladas },
+            { label: "Denegadas", value: summary.denegadas },
+            { label: "Erros", value: summary.parsed_error },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded border p-3">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="text-xl font-semibold">{value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {cstGroups.length > 0 && (
+        <div className="rounded-lg border p-4 space-y-3">
+          <p className="text-sm font-medium">Aprovação em lote — CST divergente</p>
+          <div className="space-y-2">
+            {cstGroups.map((g) => {
+              const key = `${g.rule_code}|${g.original_value}|${g.suggested_value}`;
+              return (
+                <div key={key} className="flex items-center justify-between rounded border px-3 py-2">
+                  <span className="text-sm">
+                    CST {g.original_value} → {g.suggested_value}
+                    <span className="ml-2 text-muted-foreground">({g.count} ocorrência(s))</span>
+                  </span>
+                  <Button size="sm" variant="outline" disabled={approvingKey === key}
+                    onClick={() => handleBatchApprove(g.rule_code, g.original_value, g.suggested_value)}>
+                    <CheckIcon className="mr-1 h-4 w-4" />
+                    {approvingKey === key ? "Aprovando..." : "Aprovar lote"}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {findings.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">{findings.length} finding(s) NF-e encontrado(s)</p>
+          <div className="rounded-lg border overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Severidade</TableHead>
+                  <TableHead>Regra</TableHead>
+                  <TableHead>Título</TableHead>
+                  <TableHead>Operação</TableHead>
+                  <TableHead>Descrição</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {findings.map((f) => (
+                  <TableRow key={f.id}>
+                    <TableCell>
+                      <Badge variant={(NFE_SEVERITY_BADGE[f.severity] ?? "outline") as "default" | "destructive" | "outline" | "secondary"}>
+                        {nfeSeverityLabel(f.severity)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{f.rule_code}</TableCell>
+                    <TableCell className="text-sm">{f.title}</TableCell>
+                    <TableCell className="text-xs capitalize">{f.operation_type ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-xs truncate">{f.description ?? "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
+      {findings.length === 0 && (
+        <div className="border-2 border-dashed rounded-lg p-10 text-center text-muted-foreground text-sm">
+          Nenhum finding NF-e. Envie os XMLs da competência para iniciar o cruzamento.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function CompetenciaDetailPage() {
@@ -1321,6 +1525,7 @@ export default function CompetenciaDetailPage() {
           <TabsTrigger value="pdf">PDF de Apuração</TabsTrigger>
           <TabsTrigger value="referencia">Valores de Referência</TabsTrigger>
           <TabsTrigger value="conferencia">Conferências</TabsTrigger>
+          <TabsTrigger value="nfe">NF-e XML</TabsTrigger>
         </TabsList>
 
         <TabsContent value="efd" className="mt-4">
@@ -1337,6 +1542,10 @@ export default function CompetenciaDetailPage() {
 
         <TabsContent value="conferencia" className="mt-4">
           <ConferenciaTab period={period} />
+        </TabsContent>
+
+        <TabsContent value="nfe" className="mt-4">
+          <NfeTab period={period} />
         </TabsContent>
       </Tabs>
     </main>
