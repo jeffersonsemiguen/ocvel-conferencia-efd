@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   FileTextIcon, UploadIcon, PlusIcon, CheckIcon,
   ChevronDownIcon, ChevronRightIcon, AlertCircleIcon, PlayIcon,
   DownloadIcon, WandSparklesIcon, XIcon, RefreshCwIcon, ClockIcon,
+  FileCheckIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1019,14 +1021,19 @@ function SugestoesSection({
                         {" · "}{new Date(cf.generated_at).toLocaleString("pt-BR")}
                       </span>
                     </div>
-                    <a
-                      href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/corrected-files/${cf.id}/download`}
-                      download
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      onClick={() =>
+                        api.download(
+                          `/api/v1/corrected-files/${cf.id}/download`,
+                          cf.generated_filename
+                        ).catch(() => toast.error("Erro ao baixar arquivo."))
+                      }
                     >
-                      <Button size="sm" variant="outline" className="h-7 text-xs">
-                        <DownloadIcon className="w-3 h-3 mr-1" />Download
-                      </Button>
-                    </a>
+                      <DownloadIcon className="w-3 h-3 mr-1" />Download
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -1502,9 +1509,17 @@ export default function CompetenciaDetailPage() {
           <span>/</span>
           <span>{MESES[period.month - 1]} {period.year}</span>
         </div>
-        <h1 className="text-2xl font-bold">
-          {MESES[period.month - 1]} / {period.year}
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">
+            {MESES[period.month - 1]} / {period.year}
+          </h1>
+          <Link href={`/competencias/${period.id}/correcoes`}>
+            <Button variant="outline" size="sm">
+              <FileCheckIcon className="mr-2 h-4 w-4" />
+              TXT Corrigido
+            </Button>
+          </Link>
+        </div>
         <p className="text-sm text-muted-foreground mt-0.5">
           {company.name} · CNPJ {company.cnpj}
         </p>

@@ -30,10 +30,36 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+async function downloadFile(path: string, filename?: string): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, { headers });
+
+  if (res.status === 401) {
+    clearAuth();
+    if (typeof window !== "undefined") window.location.href = "/login";
+    throw new Error("Sessão expirada");
+  }
+  if (!res.ok) throw new Error("Erro ao baixar arquivo");
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename ?? path.split("/").pop() ?? "download";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
-  get:    <T>(path: string)                    => request<T>(path),
-  post:   <T>(path: string, body: unknown)     => request<T>(path, { method: "POST",  body: JSON.stringify(body) }),
-  patch:  <T>(path: string, body: unknown)     => request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
-  delete: <T>(path: string)                    => request<T>(path, { method: "DELETE" }),
-  upload: <T>(path: string, form: FormData)    => request<T>(path, { method: "POST",  body: form }),
+  get:      <T>(path: string)                    => request<T>(path),
+  post:     <T>(path: string, body: unknown)     => request<T>(path, { method: "POST",  body: JSON.stringify(body) }),
+  patch:    <T>(path: string, body: unknown)     => request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
+  delete:   <T>(path: string)                    => request<T>(path, { method: "DELETE" }),
+  upload:   <T>(path: string, form: FormData)    => request<T>(path, { method: "POST",  body: form }),
+  download: (path: string, filename?: string)    => downloadFile(path, filename),
 };

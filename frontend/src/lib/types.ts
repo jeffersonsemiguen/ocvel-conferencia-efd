@@ -172,6 +172,22 @@ export interface NfeFinding {
   status: string;
 }
 
+export interface PreviewGroup {
+  register_code: string;
+  rule_code: string | null;
+  field_name: string;
+  source: string | null;
+  original_value: string | null;
+  suggested_value: string;
+  count: number;
+}
+
+export interface CorrectionsPreview {
+  efd_file_id: string | null;
+  total_approved: number;
+  groups: PreviewGroup[];
+}
+
 export interface ApuracaoReferenceValue {
   id: string;
   fiscal_period_id: string;
