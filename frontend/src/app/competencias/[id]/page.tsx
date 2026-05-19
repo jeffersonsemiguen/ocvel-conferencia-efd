@@ -8,7 +8,7 @@ import {
   FileTextIcon, UploadIcon, PlusIcon, CheckIcon,
   ChevronDownIcon, ChevronRightIcon, AlertCircleIcon, PlayIcon,
   DownloadIcon, WandSparklesIcon, XIcon, RefreshCwIcon, ClockIcon,
-  FileCheckIcon,
+  FileCheckIcon, MergeIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +26,9 @@ import type {
   ApuracaoReferenceValue, Company, CorrectedFile, CorrectionSuggestion,
   EfdFile, FiscalPeriod, PdfApuracaoFile, PdfExtractedPage,
   ValidationFinding, ValidationRun, NfeUploadResponse, NfeFinding,
+  MergeBlockConfig, MergeResult,
 } from "@/lib/types";
+import { DEFAULT_MERGE_CONFIG } from "@/lib/types";
 
 // ─── Tipos Sprint 8 ───────────────────────────────────────────────────────────
 
@@ -246,6 +248,198 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant={info.variant}>{info.label}</Badge>;
 }
 
+// ─── Role badges ─────────────────────────────────────────────────────────────
+
+const ROLE_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
+  empresa:  { label: "SPED Empresa",  variant: "outline" },
+  contabil: { label: "SPED Contábil", variant: "secondary" },
+  merged:   { label: "Ativo",         variant: "default" },
+};
+
+// ─── MergerModal ─────────────────────────────────────────────────────────────
+
+const BLOCOS_CONFIG = ["B","C","D","E","G","H","K","1"] as const;
+const BLOCO_NOMES: Record<string, string> = {
+  B:"Bloco B", C:"Bloco C", D:"Bloco D", E:"Bloco E",
+  G:"Bloco G (CIAP)", H:"Bloco H (Inventário)", K:"Bloco K (Estoque)", "1":"Bloco 1",
+};
+
+function readEfdHeader(file: File): Promise<{ cnpj: string; dtIni: string; dtFin: string; nome: string } | null> {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = e.target?.result as string;
+      for (const line of text.split(/\r?\n/)) {
+        if (line.startsWith("|0000|")) {
+          const p = line.split("|");
+          resolve({ cnpj: p[7]??'', dtIni: p[4]??'', dtFin: p[5]??'', nome: p[6]??'' });
+          return;
+        }
+      }
+      resolve(null);
+    };
+    reader.readAsText(file, "windows-1252");
+  });
+}
+
+function MergerModal({ period, onMerged }: { period: FiscalPeriod; onMerged: (f: EfdFile) => void }) {
+  const [open, setOpen] = useState(false);
+  const [fileEmpresa, setFileEmpresa] = useState<File | null>(null);
+  const [fileContabil, setFileContabil] = useState<File | null>(null);
+  const [metaEmpresa, setMetaEmpresa] = useState<{ cnpj: string; dtIni: string; dtFin: string; nome: string } | null>(null);
+  const [metaContabil, setMetaContabil] = useState<{ cnpj: string; dtIni: string; dtFin: string; nome: string } | null>(null);
+  const [config, setConfig] = useState<MergeBlockConfig>({ ...DEFAULT_MERGE_CONFIG });
+  const [merging, setMerging] = useState(false);
+  const [result, setResult] = useState<MergeResult | null>(null);
+  const [compatError, setCompatError] = useState<string | null>(null);
+
+  async function handleFileChange(tipo: "empresa" | "contabil", e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const meta = await readEfdHeader(file);
+    if (tipo === "empresa") { setFileEmpresa(file); setMetaEmpresa(meta); }
+    else { setFileContabil(file); setMetaContabil(meta); }
+  }
+
+  useEffect(() => {
+    if (!metaEmpresa || !metaContabil) { setCompatError(null); return; }
+    if (metaEmpresa.cnpj !== metaContabil.cnpj)
+      setCompatError(`CNPJs diferentes: ${metaEmpresa.cnpj} ≠ ${metaContabil.cnpj}`);
+    else if (metaEmpresa.dtIni !== metaContabil.dtIni || metaEmpresa.dtFin !== metaContabil.dtFin)
+      setCompatError("Períodos diferentes entre os arquivos");
+    else
+      setCompatError(null);
+  }, [metaEmpresa, metaContabil]);
+
+  async function handleMerge() {
+    if (!fileEmpresa || !fileContabil || compatError) return;
+    setMerging(true);
+    try {
+      const formE = new FormData();
+      formE.append("file", fileEmpresa);
+      const efdE = await api.upload<EfdFile>(`/api/v1/fiscal-periods/${period.id}/efd-files?role=empresa`, formE);
+
+      const formC = new FormData();
+      formC.append("file", fileContabil);
+      const efdC = await api.upload<EfdFile>(`/api/v1/fiscal-periods/${period.id}/efd-files?role=contabil`, formC);
+
+      const res = await api.post<MergeResult>(
+        `/api/v1/fiscal-periods/${period.id}/efd-files/merge`,
+        { empresa_file_id: efdE.id, contabil_file_id: efdC.id, block_config: config }
+      );
+      setResult(res);
+      const merged = await api.get<EfdFile>(`/api/v1/efd-files/${res.merged_file_id}`);
+      onMerged(merged);
+      toast.success(`Arquivo SPED gerado — ${res.total_lines.toLocaleString()} linhas`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao mesclar arquivos.");
+    } finally {
+      setMerging(false);
+    }
+  }
+
+  const canMerge = fileEmpresa && fileContabil && !compatError && !merging;
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => { setOpen(true); setResult(null); }}>
+        <MergeIcon className="w-3.5 h-3.5 mr-1" />
+        Mesclar EFDs
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Mesclar EFDs — SPED Empresa + SPED Contábil</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Upload dos dois arquivos */}
+            <div className="grid grid-cols-2 gap-3">
+              {(["empresa", "contabil"] as const).map(tipo => (
+                <div key={tipo} className="rounded border p-3 space-y-2">
+                  <p className="text-xs font-medium capitalize">SPED {tipo === "empresa" ? "Empresa" : "Contábil"}</p>
+                  <input
+                    type="file" accept=".txt,.sped"
+                    className="text-xs w-full"
+                    onChange={e => handleFileChange(tipo, e)}
+                  />
+                  {(tipo === "empresa" ? metaEmpresa : metaContabil) && (
+                    <p className="text-xs text-muted-foreground">
+                      {(tipo === "empresa" ? metaEmpresa : metaContabil)?.nome}<br />
+                      CNPJ {(tipo === "empresa" ? metaEmpresa : metaContabil)?.cnpj}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {compatError && (
+              <div className="rounded bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive">
+                {compatError}
+              </div>
+            )}
+            {metaEmpresa && metaContabil && !compatError && (
+              <div className="rounded bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">
+                Arquivos compatíveis — mesma empresa e período
+              </div>
+            )}
+
+            {/* Configuração de blocos */}
+            <div>
+              <p className="text-xs font-medium mb-2">Origem por bloco</p>
+              <div className="grid grid-cols-2 gap-1">
+                {BLOCOS_CONFIG.map(b => (
+                  <div key={b} className="flex items-center justify-between rounded border px-2 py-1.5">
+                    <span className="text-xs">{BLOCO_NOMES[b]}</span>
+                    <div className="flex gap-1">
+                      {(["empresa", "contabil"] as const).map(src => (
+                        <button
+                          key={src}
+                          className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+                            config[b] === src
+                              ? src === "empresa"
+                                ? "bg-blue-600 text-white border-blue-600"
+                                : "bg-green-700 text-white border-green-700"
+                              : "bg-muted text-muted-foreground border-input"
+                          }`}
+                          onClick={() => setConfig(c => ({ ...c, [b]: src }))}
+                        >
+                          {src === "empresa" ? "Emp" : "Cont"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Resultado */}
+            {result && (
+              <div className="rounded bg-muted p-3 space-y-1">
+                <p className="text-xs font-medium">Log do merge</p>
+                <div className="max-h-32 overflow-y-auto font-mono text-xs text-muted-foreground space-y-0.5">
+                  {result.log.map((l, i) => <div key={i}>{l}</div>)}
+                  {result.conflicts.map((c, i) => (
+                    <div key={`c${i}`} className="text-amber-600">[AVISO] {c}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Fechar</Button>
+              <Button size="sm" disabled={!canMerge} onClick={handleMerge}>
+                {merging ? "Gerando..." : "Gerar Arquivo SPED"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ─── Aba EFD ────────────────────────────────────────────────────────────────
 
 function EfdTab({ period }: { period: FiscalPeriod }) {
@@ -284,11 +478,14 @@ function EfdTab({ period }: { period: FiscalPeriod }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{files.length} arquivo(s) EFD</p>
-        <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()} disabled={uploading}>
-          <UploadIcon className="w-3.5 h-3.5 mr-1" />
-          {uploading ? "Enviando..." : "Enviar EFD (.txt)"}
-        </Button>
-        <input ref={inputRef} type="file" accept=".txt,.sped" className="hidden" onChange={handleUpload} />
+        <div className="flex gap-2">
+          <MergerModal period={period} onMerged={f => setFiles(p => [f, ...p])} />
+          <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()} disabled={uploading}>
+            <UploadIcon className="w-3.5 h-3.5 mr-1" />
+            {uploading ? "Enviando..." : "Enviar EFD (.txt)"}
+          </Button>
+          <input ref={inputRef} type="file" accept=".txt,.sped" className="hidden" onChange={handleUpload} />
+        </div>
       </div>
 
       {loading ? <p className="text-sm text-muted-foreground">Carregando...</p> : files.length === 0 ? (
@@ -301,6 +498,7 @@ function EfdTab({ period }: { period: FiscalPeriod }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Arquivo</TableHead>
+                <TableHead>Papel</TableHead>
                 <TableHead>Empresa (EFD)</TableHead>
                 <TableHead>Período EFD</TableHead>
                 <TableHead>Linhas</TableHead>
@@ -311,7 +509,12 @@ function EfdTab({ period }: { period: FiscalPeriod }) {
             <TableBody>
               {files.map(f => (
                 <TableRow key={f.id}>
-                  <TableCell className="font-mono text-xs">{f.original_filename}</TableCell>
+                  <TableCell className="font-mono text-xs max-w-xs truncate">{f.original_filename}</TableCell>
+                  <TableCell>
+                    <Badge variant={ROLE_CONFIG[f.file_role ?? "merged"]?.variant ?? "outline"}>
+                      {ROLE_CONFIG[f.file_role ?? "merged"]?.label ?? f.file_role}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-sm">{f.efd_company_name ?? "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {f.efd_start_date && f.efd_end_date ? `${f.efd_start_date} → ${f.efd_end_date}` : "—"}

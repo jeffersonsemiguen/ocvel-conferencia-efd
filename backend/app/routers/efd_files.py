@@ -46,13 +46,21 @@ class AutoUploadResponse(BaseModel):
     response_model=EfdFileResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def upload_efd_file(period_id: uuid.UUID, file: UploadFile, db: Session = Depends(get_db)):
+def upload_efd_file(
+    period_id: uuid.UUID,
+    file: UploadFile,
+    role: str = "merged",
+    db: Session = Depends(get_db),
+):
     period = db.query(FiscalPeriod).filter(FiscalPeriod.id == period_id).first()
     if not period:
         raise HTTPException(status_code=404, detail="Competência não encontrada")
 
     if not file.filename or not file.filename.lower().endswith((".txt", ".sped")):
         raise HTTPException(status_code=400, detail="Apenas arquivos .txt ou .sped são aceitos")
+
+    if role not in ("empresa", "contabil", "merged"):
+        role = "merged"
 
     upload_dir = os.path.join(settings.upload_dir, str(period_id))
     os.makedirs(upload_dir, exist_ok=True)
@@ -70,6 +78,7 @@ def upload_efd_file(period_id: uuid.UUID, file: UploadFile, db: Session = Depend
         original_filename=file.filename,
         stored_path=stored_path,
         file_size_bytes=len(content),
+        file_role=role,
         parse_status="uploaded",
     )
     db.add(efd_record)
@@ -248,6 +257,76 @@ def reparse_efd_file(file_id: uuid.UUID, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(efd_file)
     return efd_file
+
+
+class MergeRequest(BaseModel):
+    empresa_file_id: uuid.UUID
+    contabil_file_id: uuid.UUID
+    block_config: dict[str, str] = {}
+
+
+@router.post("/fiscal-periods/{period_id}/efd-files/merge", status_code=status.HTTP_201_CREATED)
+def merge_efd_files(
+    period_id: uuid.UUID,
+    body: MergeRequest,
+    db: Session = Depends(get_db),
+):
+    from app.services.efd_merger.merger import merge as run_merge
+
+    f_e = db.query(EfdFile).filter(EfdFile.id == body.empresa_file_id).first()
+    f_c = db.query(EfdFile).filter(EfdFile.id == body.contabil_file_id).first()
+    if not f_e or not f_c:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+
+    try:
+        text_e = open(f_e.stored_path, encoding="latin-1").read()
+        text_c = open(f_c.stored_path, encoding="latin-1").read()
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Erro ao ler arquivo: {exc}")
+
+    result = run_merge(text_e, text_c, body.block_config)
+    if not result.ok:
+        raise HTTPException(status_code=422, detail={"conflicts": result.conflicts, "log": result.log})
+
+    merged_id = uuid.uuid4()
+    out_dir = os.path.join(settings.upload_dir, str(period_id))
+    os.makedirs(out_dir, exist_ok=True)
+    filename = f"MERGED_{merged_id}.txt"
+    out_path = os.path.join(out_dir, filename)
+    content_bytes = result.output.encode("latin-1")
+    with open(out_path, "wb") as f_out:
+        f_out.write(content_bytes)
+
+    merged_record = EfdFile(
+        id=merged_id,
+        fiscal_period_id=period_id,
+        original_filename=filename,
+        stored_path=out_path,
+        file_size_bytes=len(content_bytes),
+        file_role="merged",
+        parse_status="uploaded",
+    )
+    db.add(merged_record)
+    db.flush()
+
+    try:
+        run_full_parse(db, merged_record, out_path)
+    except Exception as exc:
+        merged_record.parse_status = "error"
+        merged_record.parse_error = str(exc)
+
+    db.commit()
+    db.refresh(merged_record)
+
+    return {
+        "merged_file_id": str(merged_id),
+        "generated_filename": filename,
+        "total_lines": result.total_lines,
+        "parse_status": merged_record.parse_status,
+        "parse_error": merged_record.parse_error,
+        "conflicts": result.conflicts,
+        "log": result.log,
+    }
 
 
 # --- Endpoints de consulta dos registros estruturados ---

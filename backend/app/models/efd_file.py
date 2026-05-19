@@ -27,6 +27,8 @@ class EfdFile(Base):
     efd_state: Mapped[str | None] = mapped_column(String(2), nullable=True)
     efd_start_date: Mapped[str | None] = mapped_column(String(8), nullable=True)
     efd_end_date: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # empresa | contabil | merged
+    file_role: Mapped[str] = mapped_column(String(10), default="merged", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

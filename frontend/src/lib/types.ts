@@ -109,6 +109,8 @@ export interface FiscalPeriod {
   created_at: string;
 }
 
+export type EfdFileRole = "empresa" | "contabil" | "merged";
+
 export interface EfdFile {
   id: string;
   fiscal_period_id: string;
@@ -123,7 +125,25 @@ export interface EfdFile {
   efd_state: string | null;
   efd_start_date: string | null;
   efd_end_date: string | null;
+  file_role: EfdFileRole;
   created_at: string;
+}
+
+export type MergeBlockConfig = Record<string, EfdFileRole>;
+
+export const DEFAULT_MERGE_CONFIG: MergeBlockConfig = {
+  B: "contabil", C: "contabil", D: "contabil", E: "contabil",
+  G: "contabil", H: "empresa",  K: "empresa",  "1": "contabil",
+};
+
+export interface MergeResult {
+  merged_file_id: string;
+  generated_filename: string;
+  total_lines: number;
+  parse_status: string;
+  parse_error: string | null;
+  conflicts: string[];
+  log: string[];
 }
 
 export interface PdfApuracaoFile {
