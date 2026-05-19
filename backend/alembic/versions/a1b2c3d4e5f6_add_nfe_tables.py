@@ -1,7 +1,7 @@
 """add nfe tables
 
 Revision ID: a1b2c3d4e5f6
-Revises: c6b371db1d3d
+Revises: d4f8a1c2e5b3
 Create Date: 2026-05-19 00:00:00.000000
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = "a1b2c3d4e5f6"
-down_revision: Union[str, None] = "c6b371db1d3d"
+down_revision: Union[str, None] = "d4f8a1c2e5b3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
