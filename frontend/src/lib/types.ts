@@ -96,6 +96,7 @@ export interface Company {
   state: string | null;
   is_active: boolean;
   uses_ciap: boolean;
+  is_ipi_contributor: boolean;
   bloco_k_tipo: BlocoKTipo;
   inventario_mes: number | null;
   inventario_competencia_ref: InventarioRef | null;

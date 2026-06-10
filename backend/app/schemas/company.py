@@ -26,6 +26,7 @@ class CompanyCreate(BaseModel):
     state_registration: str | None = None
     state: str | None = None
     uses_ciap: bool = False
+    is_ipi_contributor: bool = False
     bloco_k_tipo: BlocoKTipo = "nao_aplica"
     inventario_mes: int | None = Field(default=None, ge=1, le=12)
     inventario_competencia_ref: InventarioRef | None = None
@@ -39,6 +40,7 @@ class CompanyUpdate(BaseModel):
     state: str | None = None
     is_active: bool | None = None
     uses_ciap: bool | None = None
+    is_ipi_contributor: bool | None = None
     bloco_k_tipo: BlocoKTipo | None = None
     inventario_mes: int | None = Field(default=None, ge=1, le=12)
     inventario_competencia_ref: InventarioRef | None = None
@@ -54,6 +56,7 @@ class CompanyResponse(BaseModel):
     state: str | None
     is_active: bool
     uses_ciap: bool
+    is_ipi_contributor: bool
     bloco_k_tipo: str
     inventario_mes: int | None
     inventario_competencia_ref: str | None

@@ -14,6 +14,8 @@ from app.models.efd_bloco_gk import EfdBlocoG110, EfdBlocoG125, EfdBlocoK100, Ef
 from app.models.efd_c100 import EfdC100Doc
 from app.models.efd_c170 import EfdC170Item
 from app.models.efd_c190 import EfdC190Analytics
+from app.models.efd_d100 import EfdD100Doc
+from app.models.efd_d190 import EfdD190Analytics
 from app.models.efd_e110 import EfdE110IcmsApuracao, EfdE111IcmsAdjustment
 from app.models.efd_e510_e520 import EfdE510IpiConsolidation, EfdE520IpiApuracao
 from app.models.pr_adjustment import EfdE112AdjustmentInfo, EfdE113AdjustmentDoc
@@ -87,6 +89,41 @@ def persist_structured_records(
             vl_icms_st=r.vl_icms_st,
             vl_red_bc=r.vl_red_bc,
             vl_ipi=r.vl_ipi,
+            cod_obs=r.cod_obs,
+        ))
+
+    for r in result.d100_records:
+        db.add(EfdD100Doc(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            ind_oper=r.ind_oper,
+            ind_emit=r.ind_emit,
+            cod_part=r.cod_part,
+            cod_mod=r.cod_mod,
+            cod_sit=r.cod_sit,
+            ser=r.ser,
+            num_doc=r.num_doc,
+            chv_cte=r.chv_cte,
+            dt_doc=r.dt_doc,
+            vl_doc=r.vl_doc,
+            vl_desc=r.vl_desc,
+            vl_serv=r.vl_serv,
+            vl_bc_icms=r.vl_bc_icms,
+            vl_icms=r.vl_icms,
+        ))
+
+    for r in result.d190_records:
+        db.add(EfdD190Analytics(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            parent_d100_line_number=r.parent_d100_line_number,
+            cst_icms=r.cst_icms,
+            cfop=r.cfop,
+            aliq_icms=r.aliq_icms,
+            vl_opr=r.vl_opr,
+            vl_bc_icms=r.vl_bc_icms,
+            vl_icms=r.vl_icms,
+            vl_red_bc=r.vl_red_bc,
             cod_obs=r.cod_obs,
         ))
 
@@ -340,6 +377,8 @@ def run_full_parse(db: Session, efd_file: EfdFile, stored_path: str) -> None:
 
 def _clear_existing(db: Session, efd_file_id: uuid.UUID) -> None:
     for model in (
+        EfdD190Analytics,
+        EfdD100Doc,
         EfdC170Item,
         EfdBlocoH005,
         EfdBlocoH010,

@@ -1,11 +1,29 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
 from app.services.nfe_crosscheck.matcher import MatchResult
+
+if TYPE_CHECKING:
+    from app.models.validation_rule_config import ValidationRuleConfig
+
+
+def _rule_active(configs: dict, code: str) -> bool:
+    cfg = configs.get(code)
+    return cfg.is_active if cfg else True
+
+
+def _cfop_excluded(configs: dict, code: str, cfop: str | None) -> bool:
+    if not cfop:
+        return False
+    cfg = configs.get(code)
+    if not cfg or not cfg.cfop_exclusions:
+        return False
+    return cfop in cfg.cfop_exclusions
 
 
 def run_entrada_rules(
@@ -14,10 +32,14 @@ def run_entrada_rules(
     company: Company,
     tol: Decimal,
     findings: list,
+    rule_configs: "dict[str, ValidationRuleConfig] | None" = None,
 ) -> None:
+    configs: dict = rule_configs or {}
     from app.services.nfe_crosscheck.engine import NfeFinding
 
     for nfe in match.nfe_orphans:
+        if not _rule_active(configs, "CONF-NFE-OMITIDA"):
+            break
         if nfe.cnpj_dest == company.cnpj and nfe.c_stat in ("100", "150"):
             findings.append(NfeFinding(
                 rule_code="CONF-NFE-OMITIDA",
@@ -35,6 +57,8 @@ def run_entrada_rules(
             ))
 
     for c100 in match.c100_orphans:
+        if not _rule_active(configs, "CONF-NFE-ORFA"):
+            break
         if c100.ind_oper == "0" and c100.chv_nfe:
             findings.append(NfeFinding(
                 rule_code="CONF-NFE-ORFA",
@@ -87,12 +111,20 @@ def run_entrada_rules(
                 nfe_document_id=nfe.id,
             ))
 
-        _compare_money(findings, "CONF-NFE-VL-DOC", "critico", "Valor total do documento",
-                       c100, nfe, "vl_doc", nfe.vl_doc, tol)
-        _compare_money(findings, "CONF-NFE-VL-ICMS", "critico", "Valor do ICMS",
-                       c100, nfe, "vl_icms", nfe.vl_icms, tol)
-        _compare_money(findings, "CONF-NFE-VL-IPI", "alerta", "Valor do IPI",
-                       c100, nfe, "vl_ipi", nfe.vl_ipi, tol)
+        cfop = getattr(c100, "_predominant_cfop", None)
+
+        if _rule_active(configs, "CONF-NFE-VL-DOC"):
+            _compare_money(findings, "CONF-NFE-VL-DOC", "critico", "Valor total do documento",
+                           c100, nfe, "vl_doc", nfe.vl_doc, tol)
+
+        if _rule_active(configs, "CONF-NFE-VL-ICMS") and not _cfop_excluded(configs, "CONF-NFE-VL-ICMS", cfop):
+            _compare_money(findings, "CONF-NFE-VL-ICMS", "critico", "Valor do ICMS",
+                           c100, nfe, "vl_icms", nfe.vl_icms, tol)
+
+        is_ipi_contributor = getattr(company, "is_ipi_contributor", False)
+        if is_ipi_contributor and _rule_active(configs, "CONF-NFE-VL-IPI") and not _cfop_excluded(configs, "CONF-NFE-VL-IPI", cfop):
+            _compare_money(findings, "CONF-NFE-VL-IPI", "alerta", "Valor do IPI",
+                           c100, nfe, "vl_ipi", nfe.vl_ipi, tol)
 
         _check_cst_divergence(findings, c100, nfe)
 
