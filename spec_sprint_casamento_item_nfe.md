@@ -237,8 +237,8 @@ compara aproximações e gera ruído.
 | 3 | Parser de C170 para `qtd`, `unid`, `descr_compl`, `vl_desc` | ✅ feito e testado |
 | 4 | Modelos e parser dos registros `0190` e `0220` | ✅ feito e testado |
 | 5 | `nfe_crosscheck/item_matcher.py` — cascata da seção 5 + score | ✅ feito, 14 testes |
-| 6 | Regras da seção 6 em `rules/itens.py` | ⬜ pendente |
-| 7 | Reprocessamento dos XMLs já persistidos | ⬜ pendente |
+| 6 | Regras da seção 6 em `rules/itens.py` + ligação no motor | ✅ feito, 15 testes |
+| 7 | Reprocessamento dos XMLs e EFDs já importados | ⬜ pendente |
 
 Detalhes das entregas concluídas:
 
