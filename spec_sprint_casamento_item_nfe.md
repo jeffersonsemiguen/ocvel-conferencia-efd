@@ -234,8 +234,8 @@ compara aproximações e gera ruído.
 |---|---|---|
 | 1 | Modelo `NfeItem` + migration `a7b8c9d0e1f2` | ✅ feito, migration aplicada |
 | 2 | Parser de XML populando `nfe_items` | ✅ feito e testado |
-| 3 | Parser de C170 para `qtd`, `unid`, `descr_compl`, `vl_desc` | ⬜ pendente |
-| 4 | Modelos e parser dos registros `0190` e `0220` | ⬜ pendente |
+| 3 | Parser de C170 para `qtd`, `unid`, `descr_compl`, `vl_desc` | ✅ feito e testado |
+| 4 | Modelos e parser dos registros `0190` e `0220` | ✅ feito e testado |
 | 5 | `nfe_crosscheck/item_matcher.py` — cascata da seção 5 + score | ⬜ pendente |
 | 6 | Regras da seção 6 em `rules/itens.py` | ⬜ pendente |
 | 7 | Reprocessamento dos XMLs já persistidos | ⬜ pendente |
@@ -256,8 +256,24 @@ CSOSN. Índice único em `(nfe_document_id, n_item)` e composto em `(c_ean, ncm)
 barras casariam entre si por "GTIN igual".
 Persistência em [`nfe_persist_service.py`](backend/app/services/nfe_parser/nfe_persist_service.py).
 
+**3 e 4 — lado da EFD** (migration `b8c9d0e1f2a3`).
+Modelos `EfdBloco0Unit` (0190) e `EfdBloco0ItemConv` (0220) em
+[`efd_bloco0.py`](backend/app/models/efd_bloco0.py). O 0220 é filho do 0200, então o parser
+passou a manter o contexto do item corrente (`current_0200_cod_item`) para vincular a
+conversão ao `COD_ITEM` certo — sem isso o fator ficaria órfão.
+
+C170 ganhou `descr_compl`, `qtd`, `unid` e `vl_desc` (posições 4, 5, 6 e 8 do leiaute), e
+`cst_icms` foi para `String(4)`, fechando a mesma lacuna de CSOSN que a migration
+`9f3e7c21ab54` já havia corrigido no C190 e D190.
+
+Validado com um trecho de EFD contendo `0190` com quatro variantes de unidade
+(`UN`/`CX`/`UND`/`UNI`), um `0220` de `CX` com fator 12, e um C170 de 1 CX — a conversão
+resulta em 12 UN, batendo com o `qTrib` do XML.
+
 **Nota sobre dados existentes:** NF-e importadas antes desta mudança não têm itens. O
-`xml_path` está guardado, então dá para repopular sem novo upload (entrega 7).
+`xml_path` está guardado, então dá para repopular sem novo upload (entrega 7). EFDs já
+processadas também precisam ser reprocessadas para popular 0190/0220 e os campos novos
+do C170.
 
 ## 8. Fora de escopo
 

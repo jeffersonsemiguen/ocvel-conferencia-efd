@@ -8,7 +8,12 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from app.models.efd_bloco0 import EfdBloco0Item, EfdBloco0Part
+from app.models.efd_bloco0 import (
+    EfdBloco0Item,
+    EfdBloco0ItemConv,
+    EfdBloco0Part,
+    EfdBloco0Unit,
+)
 from app.models.efd_bloco_h import EfdBlocoH005, EfdBlocoH010
 from app.models.efd_bloco_gk import EfdBlocoG110, EfdBlocoG125, EfdBlocoK100, EfdBlocoK200
 from app.models.efd_c100 import EfdC100Doc
@@ -66,9 +71,13 @@ def persist_structured_records(
             line_number=r.line_number,
             num_item=r.num_item,
             cod_item=r.cod_item,
+            descr_compl=r.descr_compl,
+            qtd=r.qtd,
+            unid=r.unid,
             cfop=r.cfop,
             cst_icms=r.cst_icms,
             vl_item=r.vl_item,
+            vl_desc=r.vl_desc,
             vl_opr=r.vl_opr,
             vl_bc_icms=r.vl_bc_icms,
             vl_icms=r.vl_icms,
@@ -271,6 +280,25 @@ def persist_structured_records(
             cest=r.cest,
         ))
 
+    for r in result.bloco0_unit_records:
+        db.add(EfdBloco0Unit(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            unid=r.unid,
+            descr=r.descr,
+        ))
+
+    for r in result.bloco0_item_conv_records:
+        db.add(EfdBloco0ItemConv(
+            efd_file_id=efd_file_id,
+            line_number=r.line_number,
+            parent_0200_line_number=r.parent_0200_line_number,
+            parent_cod_item=r.parent_cod_item,
+            unid_conv=r.unid_conv,
+            fat_conv=r.fat_conv,
+            cod_barra_conv=r.cod_barra_conv,
+        ))
+
     for r in result.bloco_g110_records:
         db.add(EfdBlocoG110(
             efd_file_id=efd_file_id,
@@ -387,6 +415,8 @@ def _clear_existing(db: Session, efd_file_id: uuid.UUID) -> None:
         EfdBlocoK100,
         EfdBlocoK200,
         EfdBloco0Part,
+        EfdBloco0ItemConv,
+        EfdBloco0Unit,
         EfdBloco0Item,
         EfdC100Doc,
         EfdC190Analytics,

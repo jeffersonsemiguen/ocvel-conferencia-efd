@@ -65,9 +65,13 @@ class ParsedC170:
     parent_c100_line_number: int | None
     num_item: int | None
     cod_item: str | None
+    descr_compl: str | None
+    qtd: Decimal | None
+    unid: str | None
     cfop: str | None
     cst_icms: str | None
     vl_item: Decimal | None
+    vl_desc: Decimal | None
     vl_opr: Decimal | None
     vl_bc_icms: Decimal | None
     vl_icms: Decimal | None
@@ -181,6 +185,23 @@ class Parsed0150:
     num: str | None
     compl: str | None
     bairro: str | None
+
+
+@dataclass
+class Parsed0190:
+    line_number: int
+    unid: str | None
+    descr: str | None
+
+
+@dataclass
+class Parsed0220:
+    line_number: int
+    parent_0200_line_number: int | None
+    parent_cod_item: str | None
+    unid_conv: str | None
+    fat_conv: Decimal | None
+    cod_barra_conv: str | None
 
 
 @dataclass
@@ -317,6 +338,8 @@ class EfdStructuredParseResult:
     e520_records: list[ParsedE520] = field(default_factory=list)
     bloco0_part_records: list[Parsed0150] = field(default_factory=list)
     bloco0_item_records: list[Parsed0200] = field(default_factory=list)
+    bloco0_unit_records: list[Parsed0190] = field(default_factory=list)
+    bloco0_item_conv_records: list[Parsed0220] = field(default_factory=list)
     bloco_h005_records: list[ParsedH005] = field(default_factory=list)
     bloco_h010_records: list[ParsedH010] = field(default_factory=list)
     bloco_g110_records: list[ParsedG110] = field(default_factory=list)
@@ -338,6 +361,9 @@ def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
     current_h005_line: int | None = None
     current_g110_line: int | None = None
     current_k100_line: int | None = None
+    # 0220 e filho do 0200 — guarda o item corrente para vincular a conversao
+    current_0200_line: int | None = None
+    current_0200_cod_item: str | None = None
 
     try:
         with open(file_path, encoding="latin-1") as f:
@@ -359,10 +385,22 @@ def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
                     if parsed:
                         result.bloco0_part_records.append(parsed)
 
+                elif rec == "0190":
+                    parsed = _parse_0190(parts, line_no)
+                    if parsed:
+                        result.bloco0_unit_records.append(parsed)
+
                 elif rec == "0200":
                     parsed = _parse_0200(parts, line_no)
                     if parsed:
                         result.bloco0_item_records.append(parsed)
+                        current_0200_line = line_no
+                        current_0200_cod_item = parsed.cod_item
+
+                elif rec == "0220":
+                    parsed = _parse_0220(parts, line_no, current_0200_line, current_0200_cod_item)
+                    if parsed:
+                        result.bloco0_item_conv_records.append(parsed)
 
                 elif rec == "C100":
                     current_c100_line = line_no
@@ -476,9 +514,13 @@ def _parse_c170(parts: list[str], line_no: int, parent: int | None) -> ParsedC17
         parent_c100_line_number=parent,
         num_item=_int(parts[2]) if len(parts) > 2 else None,
         cod_item=_str(parts[3]) if len(parts) > 3 else None,
+        descr_compl=_str(parts[4]) if len(parts) > 4 else None,
+        qtd=_dec(parts[5]) if len(parts) > 5 else None,
+        unid=_str(parts[6]) if len(parts) > 6 else None,
         cfop=_str(parts[11]) if len(parts) > 11 else None,
         cst_icms=_str(parts[10]) if len(parts) > 10 else None,
         vl_item=_dec(parts[7]) if len(parts) > 7 else None,
+        vl_desc=_dec(parts[8]) if len(parts) > 8 else None,
         vl_opr=_dec(parts[25]) if len(parts) > 25 else None,
         vl_bc_icms=_dec(parts[13]) if len(parts) > 13 else None,
         vl_icms=_dec(parts[15]) if len(parts) > 15 else None,
@@ -761,9 +803,9 @@ def _parse_k200(parts: list[str], line_no: int, parent: int | None) -> ParsedK20
 
 
 def _parse_d100(parts: list[str], line_no: int) -> ParsedD100 | None:
-    # |D100|IND_OPER|IND_EMIT|COD_PART|COD_MOD|COD_SIT|SER|NUM_DOC|CHV_CTE|
-    #  DT_DOC|DT_A_P|TP_CT-e|CHV_CTE_REF|VL_DOC|VL_DESC|VL_SERV|VL_BC_ICMS|VL_ICMS|...
-    if len(parts) < 15:
+    # |D100|IND_OPER|IND_EMIT|COD_PART|COD_MOD|COD_SIT|SER|SUB|NUM_DOC|CHV_CTE|
+    #  DT_DOC|DT_A_P|TP_CT-e|CHV_CTE_REF|VL_DOC|VL_DESC|IND_FRT|VL_SERV|VL_BC_ICMS|VL_ICMS|...
+    if len(parts) < 21:
         return None
     return ParsedD100(
         line_number=line_no,
@@ -773,14 +815,14 @@ def _parse_d100(parts: list[str], line_no: int) -> ParsedD100 | None:
         cod_mod=_str(parts[5]),
         cod_sit=_str(parts[6]),
         ser=_str(parts[7]),
-        num_doc=_str(parts[8]),
-        chv_cte=_str(parts[9]),
-        dt_doc=_str(parts[10]),
-        vl_doc=_dec(parts[14]) if len(parts) > 14 else None,
-        vl_desc=_dec(parts[15]) if len(parts) > 15 else None,
-        vl_serv=_dec(parts[16]) if len(parts) > 16 else None,
-        vl_bc_icms=_dec(parts[17]) if len(parts) > 17 else None,
-        vl_icms=_dec(parts[18]) if len(parts) > 18 else None,
+        num_doc=_str(parts[9]),
+        chv_cte=_str(parts[10]),
+        dt_doc=_str(parts[11]),
+        vl_doc=_dec(parts[15]),
+        vl_desc=_dec(parts[16]),
+        vl_serv=_dec(parts[18]),
+        vl_bc_icms=_dec(parts[19]),
+        vl_icms=_dec(parts[20]),
     )
 
 
@@ -799,6 +841,36 @@ def _parse_d190(parts: list[str], line_no: int, parent: int | None) -> ParsedD19
         vl_icms=_dec(parts[7]),
         vl_red_bc=_dec(parts[8]) if len(parts) > 8 else None,
         cod_obs=_str(parts[9]) if len(parts) > 9 else None,
+    )
+
+
+def _parse_0190(parts: list[str], line_no: int) -> Parsed0190 | None:
+    # |0190|UNID|DESCR|
+    if len(parts) < 3:
+        return None
+    return Parsed0190(
+        line_number=line_no,
+        unid=_str(parts[2]),
+        descr=_str(parts[3]) if len(parts) > 3 else None,
+    )
+
+
+def _parse_0220(
+    parts: list[str],
+    line_no: int,
+    parent_line: int | None,
+    parent_cod_item: str | None,
+) -> Parsed0220 | None:
+    # |0220|UNID_CONV|FAT_CONV|COD_BARRA_CONV|   — filho do 0200
+    if len(parts) < 4:
+        return None
+    return Parsed0220(
+        line_number=line_no,
+        parent_0200_line_number=parent_line,
+        parent_cod_item=parent_cod_item,
+        unid_conv=_str(parts[2]),
+        fat_conv=_dec(parts[3]) if len(parts) > 3 else None,
+        cod_barra_conv=_str(parts[4]) if len(parts) > 4 else None,
     )
 
 
