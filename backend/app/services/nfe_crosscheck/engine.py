@@ -95,6 +95,7 @@ def run_nfe_crosscheck(
     _resolve_c100_cnpjs(db, efd_file.id)
     _resolve_c100_predominant_cst(db, efd_file.id)
     _resolve_c100_predominant_cfop(db, efd_file.id)
+    _resolve_nfe_has_items(db, fiscal_period_id)
 
     match: MatchResult = match_nfe_to_c100(db, fiscal_period_id, efd_file.id)
 
@@ -157,6 +158,31 @@ def _run_item_crosscheck(
             continue
         resultado = casar(n_itens, c_itens, cadastro)
         run_item_rules(resultado, cadastro, nfe, c100, tol, findings, rule_configs)
+
+
+def _resolve_nfe_has_items(db: Session, fiscal_period_id: uuid.UUID) -> None:
+    """Marca cada NfeDocument com _has_items (transiente).
+
+    Usado para desligar a CONF-NFE-CST-DIVERGENTE (aproximacao 1o item x
+    predominante) quando o documento tem itens persistidos — nesse caso a
+    conferencia item a item cobre o CST com precisao. XMLs importados antes
+    de nfe_items existir continuam com a checagem antiga.
+    """
+    from app.models.nfe_document import NfeDocument
+    from app.models.nfe_item import NfeItem
+
+    com_itens = {
+        row[0]
+        for row in (
+            db.query(NfeItem.nfe_document_id)
+            .join(NfeDocument, NfeDocument.id == NfeItem.nfe_document_id)
+            .filter(NfeDocument.fiscal_period_id == fiscal_period_id)
+            .distinct()
+            .all()
+        )
+    }
+    for n in db.query(NfeDocument).filter(NfeDocument.fiscal_period_id == fiscal_period_id).all():
+        n._has_items = n.id in com_itens
 
 
 def _resolve_c100_cnpjs(db: Session, efd_file_id: uuid.UUID) -> None:

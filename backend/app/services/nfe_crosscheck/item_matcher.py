@@ -300,10 +300,13 @@ def _normalizar(s: str) -> str:
 
 
 def _gtin(v: str | None) -> str | None:
+    """Mesmo criterio do parser de XML: so comprimentos validos de GTIN."""
     if not v:
         return None
     limpo = v.strip().upper()
-    return limpo if limpo.isdigit() and len(limpo) >= 8 else None
+    if not limpo.isdigit() or len(limpo) not in (8, 12, 13, 14):
+        return None
+    return limpo
 
 
 def _so_digitos(v: str | None) -> str | None:

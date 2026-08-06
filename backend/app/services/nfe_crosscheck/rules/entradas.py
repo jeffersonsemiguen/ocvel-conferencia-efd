@@ -126,7 +126,12 @@ def run_entrada_rules(
             _compare_money(findings, "CONF-NFE-VL-IPI", "alerta", "Valor do IPI",
                            c100, nfe, "vl_ipi", nfe.vl_ipi, tol)
 
-        _check_cst_divergence(findings, c100, nfe)
+        # Documento com itens persistidos tem conferencia de CST item a item
+        # (rules/itens.py), que compara CST real contra CST real. A checagem
+        # abaixo usa duas aproximacoes (1o item do XML x predominante dos C190)
+        # e so continua valendo para XMLs importados antes de nfe_items existir.
+        if not getattr(nfe, "_has_items", False):
+            _check_cst_divergence(findings, c100, nfe)
 
         if nfe.dt_emi and c100.dt_doc:
             xml_dt = nfe.dt_emi.replace("-", "")

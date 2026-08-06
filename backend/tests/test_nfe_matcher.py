@@ -8,8 +8,9 @@ import pytest
 
 from app.services.nfe_crosscheck.matcher import (
     MatchResult,
-    _days_c100,
-    _days_nfe,
+    _date_c100,
+    _date_nfe,
+    _dist_dias,
     _tie_break,
     match_nfe_to_c100,
 )
@@ -42,22 +43,34 @@ def _c100(chv: str | None, num: str = "001", ser: str = "1", mod: str = "55",
     return c
 
 
-def test_days_nfe_valid():
-    assert _days_nfe("2026-04-15") == 2026 * 365 + 4 * 31 + 15
+from datetime import date
 
 
-def test_days_nfe_invalid():
-    assert _days_nfe(None) == 0
-    assert _days_nfe("bad") == 0
+def test_date_nfe_valid():
+    assert _date_nfe("2026-04-15") == date(2026, 4, 15)
 
 
-def test_days_c100_valid():
-    assert _days_c100("15042026") == 2026 * 365 + 4 * 31 + 15
+def test_date_nfe_invalid():
+    assert _date_nfe(None) is None
+    assert _date_nfe("bad") is None
 
 
-def test_days_c100_invalid():
-    assert _days_c100(None) == 0
-    assert _days_c100("1234") == 0
+def test_date_c100_valid():
+    assert _date_c100("15042026") == date(2026, 4, 15)
+
+
+def test_date_c100_invalid():
+    assert _date_c100(None) is None
+    assert _date_c100("1234") is None
+
+
+def test_dist_dias_virada_de_ano():
+    """31/12 e 01/01 sao 1 dia; a formula antiga (ano*365+mes*31) dava ~354."""
+    assert _dist_dias(date(2025, 12, 31), date(2026, 1, 1)) == 1
+
+
+def test_dist_dias_data_ausente_vai_para_o_fim():
+    assert _dist_dias(None, date(2026, 1, 1)) == 10**6
 
 
 def test_tie_break_single_candidate():
