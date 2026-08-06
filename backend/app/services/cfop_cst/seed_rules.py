@@ -53,22 +53,73 @@ RULES: list[RuleSeed] = [
         description="CFOP 6405 (saída interestadual de mercadoria adquirida em ST) exige CST 60",
     ),
 
-    # ── CFOP 1403/2403 — entrada de mercadoria em operação de ST ──────────
+    # ── CFOP x401/x403/x406/x407 — entrada de mercadoria em operação de ST ─
+    # Sob o enfoque do declarante (destinatário), mercadoria recebida com
+    # ICMS-ST já retido/cobrado pelo remetente é escriturada com CST final 60,
+    # independentemente do CST 10/30/70 usado pelo remetente na NF-e de saída.
+    RuleSeed(
+        cfop_pattern="1401",
+        operation_type="entrada",
+        allowed_cst="60",
+        disallowed_cst=None,
+        severity="critico",
+        description="CFOP 1401 (entrada para industrialização/produção, mercadoria sujeita a ST) deve ter CST 60 (ICMS cobrado anteriormente por ST)",
+    ),
     RuleSeed(
         cfop_pattern="1403",
         operation_type="entrada",
-        allowed_cst="10,30,70",
+        allowed_cst="60",
         disallowed_cst=None,
         severity="critico",
-        description="CFOP 1403 (entrada em operação sujeita a ST) deve ter CST 10, 30 ou 70",
+        description="CFOP 1403 (entrada para comercialização, mercadoria sujeita a ST) deve ter CST 60 (ICMS cobrado anteriormente por ST)",
+    ),
+    RuleSeed(
+        cfop_pattern="1406",
+        operation_type="entrada",
+        allowed_cst="60",
+        disallowed_cst=None,
+        severity="critico",
+        description="CFOP 1406 (entrada para ativo imobilizado, mercadoria sujeita a ST) deve ter CST 60 (ICMS cobrado anteriormente por ST)",
+    ),
+    RuleSeed(
+        cfop_pattern="1407",
+        operation_type="entrada",
+        allowed_cst="60",
+        disallowed_cst=None,
+        severity="critico",
+        description="CFOP 1407 (entrada para uso/consumo, mercadoria sujeita a ST) deve ter CST 60 (ICMS cobrado anteriormente por ST)",
+    ),
+    RuleSeed(
+        cfop_pattern="2401",
+        operation_type="entrada",
+        allowed_cst="60",
+        disallowed_cst=None,
+        severity="critico",
+        description="CFOP 2401 (entrada interestadual para industrialização/produção, mercadoria sujeita a ST) deve ter CST 60 (ICMS cobrado anteriormente por ST)",
     ),
     RuleSeed(
         cfop_pattern="2403",
         operation_type="entrada",
-        allowed_cst="10,30,70",
+        allowed_cst="60",
         disallowed_cst=None,
         severity="critico",
-        description="CFOP 2403 (entrada interestadual em operação sujeita a ST) deve ter CST 10, 30 ou 70",
+        description="CFOP 2403 (entrada interestadual para comercialização, mercadoria sujeita a ST) deve ter CST 60 (ICMS cobrado anteriormente por ST)",
+    ),
+    RuleSeed(
+        cfop_pattern="2406",
+        operation_type="entrada",
+        allowed_cst="60",
+        disallowed_cst=None,
+        severity="critico",
+        description="CFOP 2406 (entrada interestadual para ativo imobilizado, mercadoria sujeita a ST) deve ter CST 60 (ICMS cobrado anteriormente por ST)",
+    ),
+    RuleSeed(
+        cfop_pattern="2407",
+        operation_type="entrada",
+        allowed_cst="60",
+        disallowed_cst=None,
+        severity="critico",
+        description="CFOP 2407 (entrada interestadual para uso/consumo, mercadoria sujeita a ST) deve ter CST 60 (ICMS cobrado anteriormente por ST)",
     ),
 
     # ── CFOP 5101/5102/1101/1102 — operações normais ──────────────────────
@@ -123,33 +174,74 @@ RULES: list[RuleSeed] = [
         description="CFOP 1201 (devolução de venda) deve ter CST compatível com a saída original",
     ),
 
-    # ── Regras de prefixo — cobertura ampla ────────────────────────────────
-    # CFOPs de entrada (1xxx, 2xxx, 3xxx) não devem ter CST 60
-    # (CST 60 = mercadoria já tributada em ST = faz sentido somente em saída)
+    # ── CFOP x101/x102/x551/x556 — entrada sem ST não deve ter CST 60 ──────
+    # CST 60 representa ICMS já cobrado por ST. CFOPs de entrada que não
+    # envolvem substituição tributária (compra normal para revenda/
+    # industrialização, ativo imobilizado ou uso/consumo) não devem
+    # apresentar esse CST.
     RuleSeed(
-        cfop_pattern="1%",
+        cfop_pattern="1101",
         operation_type="entrada",
         disallowed_cst="60",
         allowed_cst=None,
         severity="alerta",
-        description="CFOPs de entrada (1xxx) geralmente não devem usar CST 60 "
-                    "(ICMS cobrado anteriormente por ST é típico de saídas)",
+        description="CFOP 1101 (compra para industrialização/produção, sem ST) não é esperado com CST 60",
     ),
     RuleSeed(
-        cfop_pattern="2%",
+        cfop_pattern="1102",
         operation_type="entrada",
         disallowed_cst="60",
         allowed_cst=None,
         severity="alerta",
-        description="CFOPs de entrada interestadual (2xxx) geralmente não devem usar CST 60",
+        description="CFOP 1102 (compra para comercialização, sem ST) não é esperado com CST 60",
     ),
     RuleSeed(
-        cfop_pattern="3%",
+        cfop_pattern="1551",
         operation_type="entrada",
         disallowed_cst="60",
         allowed_cst=None,
         severity="alerta",
-        description="CFOPs de entrada do exterior (3xxx) geralmente não devem usar CST 60",
+        description="CFOP 1551 (compra de ativo imobilizado, sem ST) não é esperado com CST 60",
+    ),
+    RuleSeed(
+        cfop_pattern="1556",
+        operation_type="entrada",
+        disallowed_cst="60",
+        allowed_cst=None,
+        severity="alerta",
+        description="CFOP 1556 (compra para uso/consumo, sem ST) não é esperado com CST 60",
+    ),
+    RuleSeed(
+        cfop_pattern="2101",
+        operation_type="entrada",
+        disallowed_cst="60",
+        allowed_cst=None,
+        severity="alerta",
+        description="CFOP 2101 (compra interestadual para industrialização/produção, sem ST) não é esperado com CST 60",
+    ),
+    RuleSeed(
+        cfop_pattern="2102",
+        operation_type="entrada",
+        disallowed_cst="60",
+        allowed_cst=None,
+        severity="alerta",
+        description="CFOP 2102 (compra interestadual para comercialização, sem ST) não é esperado com CST 60",
+    ),
+    RuleSeed(
+        cfop_pattern="2551",
+        operation_type="entrada",
+        disallowed_cst="60",
+        allowed_cst=None,
+        severity="alerta",
+        description="CFOP 2551 (compra interestadual de ativo imobilizado, sem ST) não é esperado com CST 60",
+    ),
+    RuleSeed(
+        cfop_pattern="2556",
+        operation_type="entrada",
+        disallowed_cst="60",
+        allowed_cst=None,
+        severity="alerta",
+        description="CFOP 2556 (compra interestadual para uso/consumo, sem ST) não é esperado com CST 60",
     ),
 
     # CFOPs de saída (5xxx, 6xxx, 7xxx) com CST 10 exigem registro de ST
@@ -163,14 +255,4 @@ RULES: list[RuleSeed] = [
         description="CFOPs de saída interna (5xxx): regra geral de compatibilidade de direção",
     ),
 
-    # ── CST exclusivo de CSOSN (Simples Nacional) ─────────────────────────
-    # CSOSN 500 = equivalente ao CST 60 para Simples — não deve aparecer em entradas normais
-    RuleSeed(
-        cfop_pattern="1%",
-        operation_type="entrada",
-        disallowed_cst="500",
-        allowed_cst=None,
-        severity="alerta",
-        description="CSOSN 500 (cobrado anteriormente por ST — Simples) em entrada 1xxx requer validação",
-    ),
 ]

@@ -15,10 +15,12 @@ router = APIRouter(
 
 @router.post("/seed", status_code=status.HTTP_201_CREATED)
 def seed_rules(db: Session = Depends(get_db)):
-    """Carrega as regras padrão da matriz CFOP × CST. Faz upsert por cfop_pattern + operation_type."""
+    """Carrega as regras padrão da matriz CFOP × CST. Faz upsert por cfop_pattern + operation_type
+    e desativa regras que não existem mais no seed (mantém histórico, is_active=False)."""
     from app.services.cfop_cst.seed_rules import RULES
 
     inserted = updated = 0
+    seed_keys = {(r.cfop_pattern, r.operation_type, r.description) for r in RULES}
     for rule in RULES:
         existing = db.query(CfopCstRule).filter(
             CfopCstRule.cfop_pattern == rule.cfop_pattern,
@@ -43,8 +45,14 @@ def seed_rules(db: Session = Depends(get_db)):
             ))
             inserted += 1
 
+    deactivated = 0
+    for existing in db.query(CfopCstRule).filter(CfopCstRule.is_active == True).all():
+        if (existing.cfop_pattern, existing.operation_type, existing.description) not in seed_keys:
+            existing.is_active = False
+            deactivated += 1
+
     db.commit()
-    return {"inserted": inserted, "updated": updated, "total": inserted + updated}
+    return {"inserted": inserted, "updated": updated, "deactivated": deactivated, "total": inserted + updated}
 
 
 @router.get("/")
