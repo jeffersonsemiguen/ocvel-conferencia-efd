@@ -16,7 +16,8 @@ class EfdD190Analytics(Base):
     parent_d100_line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     line_number: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    cst_icms: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    # 3 dígitos para CST; 4 para CSOSN (Simples Nacional)
+    cst_icms: Mapped[str | None] = mapped_column(String(4), nullable=True)
     cfop: Mapped[str | None] = mapped_column(String(4), nullable=True)
     aliq_icms: Mapped[float | None] = mapped_column(Numeric(7, 4), nullable=True)
     vl_opr: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
