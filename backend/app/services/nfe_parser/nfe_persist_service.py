@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import uuid
 
 from sqlalchemy.orm import Session
 
@@ -9,8 +10,9 @@ from app.config import settings
 from app.models.company import Company
 from app.models.fiscal_period import FiscalPeriod
 from app.models.nfe_document import NfeDocument
+from app.models.nfe_item import NfeItem
 from app.models.nfe_upload import NfeUpload
-from app.services.nfe_parser.nfe_xml_parser import ParsedNfe, parse_nfe_xml
+from app.services.nfe_parser.nfe_xml_parser import ParsedNfe, ParsedNfeItem, parse_nfe_xml
 
 _SAFE_CHV = re.compile(r"^\d{44}$")
 
@@ -66,7 +68,11 @@ def persist_nfe_batch(
         else:
             ind_oper = None
 
+        # id atribuido aqui para ligar os itens sem precisar de flush por documento
+        doc_id = uuid.uuid4()
+
         doc = NfeDocument(
+            id=doc_id,
             nfe_upload_id=upload.id,
             fiscal_period_id=period.id,
             company_id=period.company_id,
@@ -92,6 +98,10 @@ def persist_nfe_batch(
             xml_path=xml_path,
         )
         db.add(doc)
+
+        for item in parsed.items:
+            db.add(_build_item(doc_id, item))
+
         persisted.append(doc)
         upload.parsed_ok += 1
 
@@ -106,3 +116,38 @@ def persist_nfe_batch(
     upload.error = "; ".join(errors[:5]) if errors else None
     db.flush()
     return upload, persisted, errors
+
+
+def _build_item(doc_id: uuid.UUID, item: ParsedNfeItem) -> NfeItem:
+    def f(v):
+        return float(v) if v is not None else None
+
+    return NfeItem(
+        nfe_document_id=doc_id,
+        n_item=item.n_item,
+        c_prod=item.c_prod,
+        c_ean=item.c_ean,
+        c_ean_trib=item.c_ean_trib,
+        x_prod=item.x_prod,
+        ncm=item.ncm,
+        cest=item.cest,
+        u_com=item.u_com,
+        q_com=f(item.q_com),
+        v_un_com=f(item.v_un_com),
+        u_trib=item.u_trib,
+        q_trib=f(item.q_trib),
+        v_prod=f(item.v_prod),
+        v_desc=f(item.v_desc),
+        v_frete=f(item.v_frete),
+        v_outro=f(item.v_outro),
+        ind_tot=item.ind_tot,
+        cfop=item.cfop,
+        orig=item.orig,
+        cst_icms=item.cst_icms,
+        v_bc_icms=f(item.v_bc_icms),
+        v_icms=f(item.v_icms),
+        v_bc_icms_st=f(item.v_bc_icms_st),
+        v_icms_st=f(item.v_icms_st),
+        cst_ipi=item.cst_ipi,
+        v_ipi=f(item.v_ipi),
+    )
