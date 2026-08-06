@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import date
 
 from sqlalchemy.orm import Session
 
@@ -84,29 +85,37 @@ def _tie_break(candidates: list[NfeDocument], c100: EfdC100Doc) -> NfeDocument |
     authorized = [n for n in candidates if n.c_stat == "100"]
     pool = authorized if authorized else candidates
 
-    if c100.dt_doc:
-        pool = sorted(pool, key=lambda n: abs(_days_nfe(n.dt_emi) - _days_c100(c100.dt_doc)))
+    alvo = _date_c100(c100.dt_doc)
+    if alvo is not None:
+        pool = sorted(pool, key=lambda n: _dist_dias(_date_nfe(n.dt_emi), alvo))
 
     if len(pool) == 1:
         return pool[0]
     return None
 
 
-def _days_nfe(yyyymmdd: str | None) -> int:
+def _date_nfe(yyyymmdd: str | None) -> date | None:
+    """dt_emi da NF-e vem como 'YYYY-MM-DD'."""
     if not yyyymmdd or len(yyyymmdd) < 10:
-        return 0
+        return None
     try:
-        y, m, d = int(yyyymmdd[0:4]), int(yyyymmdd[5:7]), int(yyyymmdd[8:10])
-        return y * 365 + m * 31 + d
+        return date(int(yyyymmdd[0:4]), int(yyyymmdd[5:7]), int(yyyymmdd[8:10]))
     except ValueError:
-        return 0
+        return None
 
 
-def _days_c100(ddmmyyyy: str | None) -> int:
+def _date_c100(ddmmyyyy: str | None) -> date | None:
+    """dt_doc do C100 vem como 'DDMMAAAA'."""
     if not ddmmyyyy or len(ddmmyyyy) != 8:
-        return 0
+        return None
     try:
-        d, m, y = int(ddmmyyyy[0:2]), int(ddmmyyyy[2:4]), int(ddmmyyyy[4:8])
-        return y * 365 + m * 31 + d
+        return date(int(ddmmyyyy[4:8]), int(ddmmyyyy[2:4]), int(ddmmyyyy[0:2]))
     except ValueError:
-        return 0
+        return None
+
+
+def _dist_dias(a: date | None, b: date | None) -> int:
+    """Diferenca real em dias; data ausente vai para o fim da ordenacao."""
+    if a is None or b is None:
+        return 10**6
+    return abs((a - b).days)

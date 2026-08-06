@@ -97,6 +97,18 @@ def test_gtin_casa_de_forma_deterministica():
     assert r.casados[0].sinais == ["gtin"]
 
 
+def test_gtin_de_comprimento_invalido_nao_conta():
+    """cEAN com digitos mas comprimento fora de 8/12/13/14 nao e GTIN valido."""
+    n = _nfe_item(c_ean="0")           # um digito
+    c = _c170()
+    cad = _cadastro(cod_barra="0")
+
+    r = casar([n], [c], cad)
+
+    assert len(r.casados) == 1
+    assert "gtin" not in r.casados[0].sinais
+
+
 def test_sem_gtin_normalizado_nao_casa_por_gtin():
     """cEAN ausente nao pode virar chave: dois itens sem GTIN casariam entre si."""
     n = _nfe_item(c_ean=None)

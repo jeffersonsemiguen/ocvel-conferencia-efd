@@ -226,11 +226,18 @@ def _ipi_values(det) -> tuple[str | None, Decimal | None]:
 
 
 def _gtin(v: str | None) -> str | None:
-    """Normaliza cEAN: 'SEM GTIN' nao e codigo de barras, e ausencia de codigo."""
+    """Normaliza cEAN: 'SEM GTIN' nao e codigo de barras, e ausencia de codigo.
+
+    Aceita apenas os comprimentos validos de GTIN (8, 12, 13, 14 digitos) —
+    sem isso, um cEAN preenchido com "0" ou lixo curto seria gravado como
+    codigo de barras e poluiria o sinal deterministico do casamento de item.
+    """
     if not v:
         return None
     limpo = v.strip().upper()
     if limpo in _GTIN_VAZIO or not limpo.isdigit():
+        return None
+    if len(limpo) not in (8, 12, 13, 14):
         return None
     return limpo
 
