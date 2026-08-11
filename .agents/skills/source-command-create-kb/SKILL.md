@@ -1,0 +1,42 @@
+---
+name: "source-command-create-kb"
+description: "Create a complete KB section from scratch with MCP validation"
+---
+
+# source-command-create-kb
+
+Use this skill when the user asks to run the migrated source command `create-kb`.
+
+## Command Template
+
+# Create Knowledge Base Command
+
+> Create a complete KB section from scratch with MCP validation.
+
+## Usage
+
+```
+/create-kb <DOMAIN>
+```
+
+**Examples**: `/create-kb redis`, `/create-kb pandas`, `/create-kb authentication`
+
+## What Happens
+
+1. **Validates prerequisites** — checks `_templates/` and `_index.yaml` exist
+2. **Invokes kb-architect agent** — executes full workflow
+3. **Reports completion** — shows score and files created
+
+## Options
+
+| Command | Action |
+|---------|--------|
+| `/create-kb <domain>` | Create new KB domain |
+| `/create-kb --audit` | Audit existing KB health |
+
+## See Also
+
+- **Agent**: `.Codex/agents/exploration/kb-architect.md`
+- **Example**: `.Codex/kb/llmops/`
+- **Templates**: `.Codex/kb/_templates/`
+- **Registry**: `.Codex/kb/_index.yaml`
