@@ -36,7 +36,7 @@ def get_cfop_totals(file_id: uuid.UUID, db: Session = Depends(get_db)):
             func.sum(EfdC190Analytics.vl_opr).label("vl_opr"),
             func.sum(EfdC190Analytics.vl_bc_icms).label("vl_bc_icms"),
             func.sum(EfdC190Analytics.vl_icms).label("vl_icms"),
-            func.sum(EfdC190Analytics.vl_bc_icms_st).label("vl_icms_st"),
+            func.sum(EfdC190Analytics.vl_icms_st).label("vl_icms_st"),
             func.sum(EfdC190Analytics.vl_ipi).label("vl_ipi"),
         )
         .filter(EfdC190Analytics.efd_file_id == file_id)

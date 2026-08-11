@@ -54,3 +54,50 @@ class EfdBloco0Item(Base):
     cest: Mapped[str | None] = mapped_column(String(7), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
+class EfdBloco0Unit(Base):
+    """Registro 0190 — Identificacao das unidades de medida.
+
+    Declara cada unidade usada no arquivo. Serve para detectar o caos cadastral
+    (UN, UND, UNI, UN1 convivendo para a mesma coisa) e como dominio das
+    unidades referenciadas em C170 e 0220.
+    """
+
+    __tablename__ = "efd_bloco0_units"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    efd_file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("efd_files.id"), nullable=False, index=True)
+    line_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    unid: Mapped[str | None] = mapped_column(String(6), nullable=True, index=True)
+    descr: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
+class EfdBloco0ItemConv(Base):
+    """Registro 0220 — Fatores de conversao de unidades, filho do 0200.
+
+    E o mecanismo oficial da EFD para o caso de comprar em CX e consumir em UN.
+    Sem ele a conferencia de quantidade contra o XML nao fecha quando as
+    unidades comercial e tributavel diferem.
+
+    parent_cod_item guarda o COD_ITEM do 0200 que envolve este registro — o
+    vinculo real; parent_0200_line_number fica para rastreio da linha original.
+    """
+
+    __tablename__ = "efd_bloco0_item_conv"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    efd_file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("efd_files.id"), nullable=False, index=True)
+    line_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    parent_0200_line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parent_cod_item: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
+
+    unid_conv: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    fat_conv: Mapped[float | None] = mapped_column(Numeric(18, 6), nullable=True)
+    cod_barra_conv: Mapped[str | None] = mapped_column(String(14), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)

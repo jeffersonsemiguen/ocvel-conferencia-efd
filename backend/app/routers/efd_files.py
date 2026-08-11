@@ -86,11 +86,24 @@ def upload_efd_file(
 
     try:
         run_full_parse(db, efd_record, stored_path)
+        db.commit()
     except Exception as exc:
-        efd_record.parse_status = "error"
-        efd_record.parse_error = str(exc)
+        # Um flush com erro invalida a sessão — rollback e regrava só o EfdFile
+        # com o status de erro, para o upload não sumir silenciosamente.
+        db.rollback()
+        efd_record = EfdFile(
+            id=file_id,
+            fiscal_period_id=period_id,
+            original_filename=file.filename,
+            stored_path=stored_path,
+            file_size_bytes=len(content),
+            file_role=role,
+            parse_status="error",
+            parse_error=str(exc),
+        )
+        db.add(efd_record)
+        db.commit()
 
-    db.commit()
     db.refresh(efd_record)
     return efd_record
 

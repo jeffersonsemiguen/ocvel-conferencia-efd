@@ -24,6 +24,7 @@ Regras implementadas:
   REGRA-DF06A        — Destinatário divergente EFD × NF-e (requer NF-e)
   REGRA-AJDF01       — Ajuste sem documentos E113 vinculados
   REGRA-AJCP01       — Ajuste PR020021 sem CIAP (Bloco G)
+  CONF-CST-RED-BC    — CST x20/x70 (redução de base) deve ter VL_RED_BC e vice-versa
 """
 from __future__ import annotations
 
@@ -150,6 +151,9 @@ def run_conference(
 
     # ── 14. Bloco D — CT-e (D190 × D100) ─────────────────────────────────────
     _conf_d190_vs_d100(db, efd_file_id, tol, findings)
+
+    # ── 15. CST de redução de base × VL_RED_BC ───────────────────────────────
+    _conf_cst_red_bc(db, efd_file_id, tol, findings)
 
     # Persiste findings
     _save_findings(db, run, findings)
@@ -338,10 +342,40 @@ def _conf_cfop_cst(
             return cfop.startswith(pattern[:-1])
         return cfop == pattern
 
+    csosn_seen: set[tuple[str, str]] = set()
+
     for c190 in c190_rows:
         cfop = (c190.cfop or "").strip()
         cst_raw = (c190.cst_icms or "").strip()
         if not cfop or not cst_raw:
+            continue
+
+        # CSOSN (Simples Nacional) tem 4 dígitos: 1 de origem + 3 de situação.
+        # Sob o enfoque do declarante (regime normal), a escrituração própria
+        # deve usar CST de 3 dígitos — CSOSN no C190 é advertido, não validado
+        # contra a matriz CFOP×CST.
+        if len(cst_raw) == 4:
+            if (cfop, cst_raw) not in csosn_seen:
+                csosn_seen.add((cfop, cst_raw))
+                findings.append(Finding(
+                    rule_code="CONF-CFOP-CST",
+                    severity="alerta",
+                    finding_type="csosn_em_escrituracao",
+                    title=f"CFOP {cfop} com CSOSN {cst_raw} — código do Simples na escrituração",
+                    description=(
+                        f"O registro C190 traz o código {cst_raw}, que é um CSOSN (4 dígitos, "
+                        "Simples Nacional). Sob o enfoque do declarante, a escrituração própria "
+                        "de contribuinte do regime normal deve usar CST ICMS de 3 dígitos — o "
+                        "CSOSN da NF-e do fornecedor não deve ser copiado. Verifique o CST "
+                        "adequado para esta operação."
+                    ),
+                    register_code="C190",
+                    field_name="cst_icms",
+                    cfop=cfop,
+                    cst=cst_raw,
+                    tax_type="icms",
+                    operation_type=op_type(cfop),
+                ))
             continue
 
         # Normaliza CST para 2 dígitos (sem o dígito de origem)
@@ -1108,6 +1142,91 @@ def _conf_c170_seq(
         register_code="C170",
         field_name="num_item",
     ))
+
+
+def _conf_cst_red_bc(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    tol: Decimal,
+    findings: list[Finding],
+) -> None:
+    """CONF-CST-RED-BC: coerência entre CST de redução de base (x20/x70) e VL_RED_BC.
+
+    - CST 20/70 sem VL_RED_BC informado (ou zero): a escrituração declara
+      redução de base mas não demonstra a parcela reduzida.
+    - VL_RED_BC > 0 com CST que não é de redução: redução informada sem
+      o CST correspondente.
+    Agregado por CFOP × CST para não poluir os achados.
+    """
+    c190_rows = (
+        db.query(EfdC190Analytics)
+        .filter(EfdC190Analytics.efd_file_id == efd_file_id)
+        .all()
+    )
+    if not c190_rows:
+        return
+
+    # (cfop, cst_raw) -> [qtd, vl_opr, vl_red_bc]
+    sem_reducao: dict[tuple[str, str], list] = {}
+    reducao_sem_cst: dict[tuple[str, str], list] = {}
+
+    for c190 in c190_rows:
+        cfop = (c190.cfop or "").strip()
+        cst_raw = (c190.cst_icms or "").strip()
+        if not cfop or not cst_raw or len(cst_raw) == 4:  # CSOSN já advertido
+            continue
+
+        situacao = _cst_situation(cst_raw)
+        vl_red = _to_dec(c190.vl_red_bc)
+        key = (cfop, cst_raw)
+
+        if situacao in ("20", "70") and vl_red <= tol:
+            agg = sem_reducao.setdefault(key, [0, Decimal("0")])
+            agg[0] += 1
+            agg[1] += _to_dec(c190.vl_opr)
+        elif situacao not in ("20", "70") and vl_red > tol:
+            agg = reducao_sem_cst.setdefault(key, [0, Decimal("0")])
+            agg[0] += 1
+            agg[1] += vl_red
+
+    for (cfop, cst_raw), (qtd, vl_opr) in sorted(sem_reducao.items()):
+        findings.append(Finding(
+            rule_code="CONF-CST-RED-BC",
+            severity="alerta",
+            finding_type="reducao_bc_inconsistente",
+            title=f"CFOP {cfop} com CST {cst_raw} (redução de base) sem VL_RED_BC informado",
+            description=(
+                f"{qtd} registro(s) C190 declaram CST de redução de base de cálculo "
+                f"(situação {_cst_situation(cst_raw)}), mas o campo VL_RED_BC está zerado/vazio. "
+                f"Valor das operações: R$ {float(vl_opr):,.2f}. Informe a parcela "
+                "reduzida da base ou revise o CST."
+            ),
+            register_code="C190",
+            field_name="vl_red_bc",
+            cfop=cfop,
+            cst=cst_raw,
+            tax_type="icms",
+            efd_value=float(vl_opr),
+        ))
+
+    for (cfop, cst_raw), (qtd, vl_red) in sorted(reducao_sem_cst.items()):
+        findings.append(Finding(
+            rule_code="CONF-CST-RED-BC",
+            severity="alerta",
+            finding_type="reducao_bc_inconsistente",
+            title=f"CFOP {cfop} com CST {cst_raw} possui VL_RED_BC sem CST de redução",
+            description=(
+                f"{qtd} registro(s) C190 informam VL_RED_BC (total R$ {float(vl_red):,.2f}), "
+                f"mas o CST {cst_raw} não é de redução de base (esperado x20 ou x70). "
+                "Revise o CST ou o valor de redução informado."
+            ),
+            register_code="C190",
+            field_name="vl_red_bc",
+            cfop=cfop,
+            cst=cst_raw,
+            tax_type="icms",
+            efd_value=float(vl_red),
+        ))
 
 
 def _conf_structural(

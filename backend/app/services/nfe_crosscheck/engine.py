@@ -7,12 +7,15 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
+from app.models.efd_c170 import EfdC170Item
 from app.models.efd_file import EfdFile
 from app.models.fiscal_period import FiscalPeriod
 from app.models.validation import ValidationFinding, ValidationRun
 from app.models.validation_rule_config import ValidationRuleConfig
+from app.services.nfe_crosscheck.item_matcher import carregar_cadastro, casar
 from app.services.nfe_crosscheck.matcher import MatchResult, match_nfe_to_c100
 from app.services.nfe_crosscheck.rules.entradas import run_entrada_rules
+from app.services.nfe_crosscheck.rules.itens import run_item_rules
 from app.services.nfe_crosscheck.rules.saidas import run_saida_rules
 from app.services.nfe_crosscheck.suggestion_mapper import generate_cst_suggestions
 
@@ -92,11 +95,13 @@ def run_nfe_crosscheck(
     _resolve_c100_cnpjs(db, efd_file.id)
     _resolve_c100_predominant_cst(db, efd_file.id)
     _resolve_c100_predominant_cfop(db, efd_file.id)
+    _resolve_nfe_has_items(db, fiscal_period_id)
 
     match: MatchResult = match_nfe_to_c100(db, fiscal_period_id, efd_file.id)
 
     run_entrada_rules(db, match, company, monetary_tolerance, findings, rule_configs)
     run_saida_rules(db, match, company, monetary_tolerance, findings)
+    _run_item_crosscheck(db, match, efd_file.id, monetary_tolerance, findings, rule_configs)
 
     _save_findings(db, run, findings)
 
@@ -105,6 +110,79 @@ def run_nfe_crosscheck(
     run.status = "completed"
     db.flush()
     return run
+
+
+def _run_item_crosscheck(
+    db: Session,
+    match: MatchResult,
+    efd_file_id: uuid.UUID,
+    tol: Decimal,
+    findings: list[NfeFinding],
+    rule_configs: dict,
+) -> None:
+    """Conferencia item a item sobre os documentos ja casados.
+
+    O cadastro (0200 + 0220) e carregado UMA vez por arquivo e reaproveitado em
+    todas as notas — resolver por nota faria uma consulta por documento.
+    """
+    from app.models.nfe_item import NfeItem
+
+    pares = match.matched_by_key + match.matched_by_fallback
+    if not pares:
+        return
+
+    cadastro = carregar_cadastro(db, efd_file_id)
+
+    # itens de NF-e e de C170 carregados em lote, agrupados em memoria
+    doc_ids = [n.id for n, _ in pares]
+    itens_nfe: dict[uuid.UUID, list] = {}
+    for it in db.query(NfeItem).filter(NfeItem.nfe_document_id.in_(doc_ids)).all():
+        itens_nfe.setdefault(it.nfe_document_id, []).append(it)
+
+    linhas_c100 = [c.line_number for _, c in pares]
+    itens_c170: dict[int, list] = {}
+    for it in (
+        db.query(EfdC170Item)
+        .filter(
+            EfdC170Item.efd_file_id == efd_file_id,
+            EfdC170Item.parent_c100_line_number.in_(linhas_c100),
+        )
+        .all()
+    ):
+        itens_c170.setdefault(it.parent_c100_line_number, []).append(it)
+
+    for nfe, c100 in pares:
+        n_itens = sorted(itens_nfe.get(nfe.id, []), key=lambda x: x.n_item or 0)
+        c_itens = sorted(itens_c170.get(c100.line_number, []), key=lambda x: x.num_item or 0)
+        if not n_itens or not c_itens:
+            continue
+        resultado = casar(n_itens, c_itens, cadastro)
+        run_item_rules(resultado, cadastro, nfe, c100, tol, findings, rule_configs)
+
+
+def _resolve_nfe_has_items(db: Session, fiscal_period_id: uuid.UUID) -> None:
+    """Marca cada NfeDocument com _has_items (transiente).
+
+    Usado para desligar a CONF-NFE-CST-DIVERGENTE (aproximacao 1o item x
+    predominante) quando o documento tem itens persistidos — nesse caso a
+    conferencia item a item cobre o CST com precisao. XMLs importados antes
+    de nfe_items existir continuam com a checagem antiga.
+    """
+    from app.models.nfe_document import NfeDocument
+    from app.models.nfe_item import NfeItem
+
+    com_itens = {
+        row[0]
+        for row in (
+            db.query(NfeItem.nfe_document_id)
+            .join(NfeDocument, NfeDocument.id == NfeItem.nfe_document_id)
+            .filter(NfeDocument.fiscal_period_id == fiscal_period_id)
+            .distinct()
+            .all()
+        )
+    }
+    for n in db.query(NfeDocument).filter(NfeDocument.fiscal_period_id == fiscal_period_id).all():
+        n._has_items = n.id in com_itens
 
 
 def _resolve_c100_cnpjs(db: Session, efd_file_id: uuid.UUID) -> None:
