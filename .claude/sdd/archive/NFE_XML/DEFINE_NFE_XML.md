@@ -9,7 +9,7 @@
 | **Feature** | NFE_XML |
 | **Date** | 2026-05-19 |
 | **Author** | define-agent + jefferson |
-| **Status** | ✅ Shipped |
+| **Status** | ✅ Complete (Designed) |
 | **Clarity Score** | 14/15 |
 
 ---
@@ -54,17 +54,17 @@ O contador fiscal da FiscalCheck consegue hoje validar apenas inconsistências i
 
 Métricas mensuráveis e testáveis:
 
-- [x] Upload de até 500 XMLs (em ZIP ou múltiplos arquivos) por competência processado em < 60 s
-- [x] Parser aceita NF-e modelo 55 v4.00 com e sem wrapper `<procNFe>` / `<nfeProc>`
-- [x] Cross-check produz no mínimo 10 códigos `CONF-NFE-*` cobrindo as 4 classes (órfã, omissão, divergência, status)
-- [x] 100% das NF-e canceladas (cStat 101) lançadas com `COD_SIT≠02` na C100 geram finding severity **Critical**
-- [x] 100% das NF-e denegadas (cStat 110) presentes na EFD geram finding severity **Critical**
-- [x] Tolerância de R$ 0,02 para comparação de valores (`vl_doc`, `vl_icms`, `vl_ipi`)
-- [x] Taxa de falso-positivo < 5% em empresa-piloto com 200–500 NF-e/mês
-- [x] Match via `chv_nfe` (passo 1) atinge ≥ 95% das C100 com chave preenchida
-- [x] Fallback `(cnpj+num+ser+mod)` resolve ≥ 80% dos casos onde `chv_nfe` é ausente ou diverge
-- [x] Sugestões de correção CST/CFOP geradas via cruzamento podem ser aprovadas em lote (1 clique para N findings do mesmo tipo)
-- [x] Zero alterações em código de dashboard, risk score ou geração XLSX/ZIP (findings entram via pipeline existente)
+- [ ] Upload de até 500 XMLs (em ZIP ou múltiplos arquivos) por competência processado em < 60 s
+- [ ] Parser aceita NF-e modelo 55 v4.00 com e sem wrapper `<procNFe>` / `<nfeProc>`
+- [ ] Cross-check produz no mínimo 10 códigos `CONF-NFE-*` cobrindo as 4 classes (órfã, omissão, divergência, status)
+- [ ] 100% das NF-e canceladas (cStat 101) lançadas com `COD_SIT≠02` na C100 geram finding severity **Critical**
+- [ ] 100% das NF-e denegadas (cStat 110) presentes na EFD geram finding severity **Critical**
+- [ ] Tolerância de R$ 0,02 para comparação de valores (`vl_doc`, `vl_icms`, `vl_ipi`)
+- [ ] Taxa de falso-positivo < 5% em empresa-piloto com 200–500 NF-e/mês
+- [ ] Match via `chv_nfe` (passo 1) atinge ≥ 95% das C100 com chave preenchida
+- [ ] Fallback `(cnpj+num+ser+mod)` resolve ≥ 80% dos casos onde `chv_nfe` é ausente ou diverge
+- [ ] Sugestões de correção CST/CFOP geradas via cruzamento podem ser aprovadas em lote (1 clique para N findings do mesmo tipo)
+- [ ] Zero alterações em código de dashboard, risk score ou geração XLSX/ZIP (findings entram via pipeline existente)
 
 ---
 
@@ -150,16 +150,18 @@ Premissas que, se erradas, podem invalidar o design:
 
 | ID | Assumption | If Wrong, Impact | Validated? |
 |----|------------|------------------|------------|
-| A-001 | Volume MVP cabe em request síncrono (< 500 XMLs / 60 s com `lxml`) | Precisaria introduzir Celery/Redis; refactor parser para worker | [x] Validado na build |
-| A-002 | `lxml` lida bem com NF-e v4.00 com e sem wrapper `<nfeProc>`/`<procNFe>` e com namespaces variados | Trocar por `xml.etree` com adaptações de namespace, ou pré-processar XMLs | [x] Validado na build |
-| A-003 | Empresa-piloto fornecerá ≥ 200 NF-e reais (entradas + saídas) para medir falso-positivo < 5% | Sem amostra real, métrica vira hipotética | [x] Testado com fixtures reais |
-| A-004 | Match por fallback `(cnpj_emit, num_doc, ser, cod_mod)` é suficiente para casos de chave digitada errada | Precisaria adicionar match por `(emit+dt_emi+vl_doc)` como 3º passo | [x] Testado e funciona |
+| A-001 | Volume MVP cabe em request síncrono (< 500 XMLs / 60 s com `lxml`) | Precisaria introduzir Celery/Redis; refactor parser para worker | [ ] Validar em piloto |
+| A-002 | `lxml` lida bem com NF-e v4.00 com e sem wrapper `<nfeProc>`/`<procNFe>` e com namespaces variados | Trocar por `xml.etree` com adaptações de namespace, ou pré-processar XMLs | [ ] Validar com fixtures reais |
+| A-003 | Empresa-piloto fornecerá ≥ 200 NF-e reais (entradas + saídas) para medir falso-positivo < 5% | Sem amostra real, métrica vira hipotética | [ ] Coletar amostra durante /design |
+| A-004 | Match por fallback `(cnpj_emit, num_doc, ser, cod_mod)` é suficiente para casos de chave digitada errada | Precisaria adicionar match por `(emit+dt_emi+vl_doc)` como 3º passo | [ ] Validar com casos reais |
 | A-005 | `CorrectionSuggestion` model atual suporta correções derivadas de NF-e (campo `source_register`, payload de delta) sem migração | Necessária migração para adicionar campos (`source: 'efd_internal' \| 'nfe_crosscheck'`) | [x] Confirmado em /design — schema atual tem `source` String(60) e `rule_code` String(30); zero migration |
 | A-006 | Workflow de aprovação em lote por tipo de erro já existe ou pode ser estendido sem refactor de UI | Sprint dedicada à UI de correções em lote | [x] Confirmado pelo usuário (Sprint 8) |
-| A-007 | Tolerância R$ 0,02 cobre arredondamentos sem gerar ruído | Calibrar tolerância por campo (`vl_doc` mais restrito, `vl_pis`/`vl_cofins` mais frouxo) | [x] Validado na build |
-| A-008 | Separação automática entrada/saída pelo CNPJ da empresa (`0000`) cobre 100% dos casos | Algumas operações triangulares ou transferências podem confundir; precisaria de lookup adicional | [x] Implementado e testado |
+| A-007 | Tolerância R$ 0,02 cobre arredondamentos sem gerar ruído | Calibrar tolerância por campo (`vl_doc` mais restrito, `vl_pis`/`vl_cofins` mais frouxo) | [ ] Validar em piloto |
+| A-008 | Separação automática entrada/saída pelo CNPJ da empresa (`0000`) cobre 100% dos casos | Algumas operações triangulares ou transferências podem confundir; precisaria de lookup adicional | [ ] Validar em piloto |
 | A-009 | Apenas presença de `<protNFe>` + `cStat ∈ {100, 150}` é suficiente para considerar XML "autorizado" para fins de cruzamento | Precisaria validar `dhRecbto`, ambiente (tpAmb=1), ou verificar protocolo no portal SEFAZ | [x] Confirmado pelo usuário |
 | A-010 | Persistência local em filesystem é aceitável; sem necessidade de S3/GCS no MVP | Migrar storage para objeto bucket; alterar `UPLOAD_DIR` para abstração | [x] Confirmado pelo usuário |
+
+**Nota:** Validar A-001 a A-005 e A-007 antes ou durante a fase /design. Premissas não validadas viram riscos.
 
 ---
 
@@ -171,8 +173,19 @@ Premissas que, se erradas, podem invalidar o design:
 | Users | 3 | 4 personas com pain points específicos; usuário primário (contador) identificado |
 | Goals | 3 | MoSCoW aplicado; goals MUST cobrem as 4 classes de finding + reuso de pipeline existente |
 | Success | 3 | 11 métricas mensuráveis com números (< 60s, ≥ 95%, < 5% FP, R$ 0,02, 500 XMLs) |
-| Scope | 3 | Out of scope explícito e abrangente; all open questions resolvidas em /design e /build |
-| **Total** | **15/15** | **Feature shipped and archived** |
+| Scope | 2 | Out of scope explícito e abrangente; uma área permanece menos definida — comportamento exato do match fallback quando há múltiplos candidatos (ex.: 2 XMLs com mesmo CNPJ+num+ser de emitentes que reaproveitam numeração após cancelamento). A resolver em /design. |
+| **Total** | **14/15** | |
+
+---
+
+## Open Questions
+
+Pontos a resolver em /design (não bloqueiam a fase, mas precisam de decisão antes do build):
+
+1. **Tie-breaking no fallback de match** — Resolvido em DESIGN Decision 3: (a) prefere `cStat=100` sobre `150`; (b) `dhEmi` mais próximo de `dt_doc`; (c) finding `CONF-NFE-AMBIGUO` se persistir empate.
+2. **Comportamento quando EFD da competência ainda não foi importada** — Resolvido em DESIGN Decision 7: persiste XMLs + finding `NFE-EFD-PENDING`; endpoint `/run-crosscheck` para re-executar.
+3. **Schema de `CorrectionSuggestion`** — Resolvido em /design: schema atual já tem `source` String(60) e `rule_code` String(30); zero migration.
+4. **Limite de tamanho do upload** — Resolvido em DESIGN: 100 MB / 5.000 XMLs (variáveis `NFE_MAX_ZIP_BYTES` e `NFE_MAX_XMLS_PER_REQUEST`).
 
 ---
 
@@ -182,12 +195,9 @@ Premissas que, se erradas, podem invalidar o design:
 |---------|------|--------|---------|
 | 1.0 | 2026-05-19 | define-agent | Versão inicial a partir de BRAINSTORM_NFE_XML.md com 8 decisões já confirmadas pelo usuário |
 | 1.1 | 2026-05-19 | design-agent | Status atualizado para Complete (Designed) após criação de DESIGN_NFE_XML.md; open questions 1–4 resolvidas |
-| 1.2 | 2026-05-19 | ship-agent | Archived: Todas as assumptions validadas; success criteria verificadas; status atualizado para Shipped |
 
 ---
 
-## Archived
+## Next Step
 
-This document has been archived in `.claude/sdd/archive/NFE_XML/` along with BRAINSTORM, DESIGN, and BUILD_REPORT artifacts.
-
-Feature shipped and deployed in production on 2026-05-19.
+**Ready for:** `/ship NFE_XML`

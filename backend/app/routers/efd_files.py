@@ -247,21 +247,41 @@ def get_efd_file(file_id: uuid.UUID, db: Session = Depends(get_db)):
 def delete_efd_file(file_id: uuid.UUID, db: Session = Depends(get_db)):
     from app.services.efd_parser.efd_persist_service import _clear_existing
     from app.models.validation import ValidationRun, ValidationFinding
-    from app.models.correction import CorrectionSuggestion, CorrectedFile
+    from app.models.correction import CorrectionSuggestion, CorrectedFile, CorrectionLog
 
     efd_file = db.query(EfdFile).filter(EfdFile.id == file_id).first()
     if not efd_file:
         raise HTTPException(status_code=404, detail="Arquivo não encontrado")
 
+    # 1. Dados estruturais do EFD (C100, C170, C190, E110, blocos, etc.)
     _clear_existing(db, file_id)
 
-    runs = db.query(ValidationRun).filter(ValidationRun.efd_file_id == file_id).all()
-    for run in runs:
-        db.query(ValidationFinding).filter(ValidationFinding.validation_run_id == run.id).delete()
-        db.delete(run)
+    # 2. CorrectionLog deve vir antes de CorrectionSuggestion e CorrectedFile (FK)
+    sug_ids = [
+        r.id for r in db.query(CorrectionSuggestion.id)
+        .filter(CorrectionSuggestion.efd_file_id == file_id).all()
+    ]
+    cf_ids = [
+        r.id for r in db.query(CorrectedFile.id)
+        .filter(CorrectedFile.original_efd_file_id == file_id).all()
+    ]
+    if sug_ids:
+        db.query(CorrectionLog).filter(CorrectionLog.suggestion_id.in_(sug_ids)).delete(synchronize_session=False)
+    if cf_ids:
+        db.query(CorrectionLog).filter(CorrectionLog.corrected_file_id.in_(cf_ids)).delete(synchronize_session=False)
 
+    # 3. Sugestões e arquivos corrigidos
     db.query(CorrectionSuggestion).filter(CorrectionSuggestion.efd_file_id == file_id).delete()
     db.query(CorrectedFile).filter(CorrectedFile.original_efd_file_id == file_id).delete()
+
+    # 4. Findings e runs de validação
+    run_ids = [
+        r.id for r in db.query(ValidationRun.id)
+        .filter(ValidationRun.efd_file_id == file_id).all()
+    ]
+    if run_ids:
+        db.query(ValidationFinding).filter(ValidationFinding.validation_run_id.in_(run_ids)).delete(synchronize_session=False)
+        db.query(ValidationRun).filter(ValidationRun.id.in_(run_ids)).delete(synchronize_session=False)
 
     stored_path = efd_file.stored_path
     db.delete(efd_file)

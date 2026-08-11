@@ -5,7 +5,7 @@ from app.database import Base, engine
 from app.routers import (
     apuracao_reference, auth, cfop_cst, companies, correction, dashboard,
     efd_files, fiscal_matrix, fiscal_periods, nfe, pdf_apuracao, pr_adjustment, validation,
-    period_analytics,
+    period_analytics, relatorio, validation_config,
 )
 from app import models  # Import all models so they're registered with Base
 
@@ -42,6 +42,8 @@ app.include_router(fiscal_matrix.router)
 app.include_router(dashboard.router)
 app.include_router(period_analytics.router)
 app.include_router(nfe.router)
+app.include_router(relatorio.router)
+app.include_router(validation_config.router)
 
 
 @app.get("/health")

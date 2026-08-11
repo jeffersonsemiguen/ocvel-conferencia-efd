@@ -261,6 +261,39 @@ class ParsedK100:
 
 
 @dataclass
+class ParsedD100:
+    line_number: int
+    ind_oper: str | None
+    ind_emit: str | None
+    cod_part: str | None
+    cod_mod: str | None
+    cod_sit: str | None
+    ser: str | None
+    num_doc: str | None
+    chv_cte: str | None
+    dt_doc: str | None
+    vl_doc: Decimal | None
+    vl_desc: Decimal | None
+    vl_serv: Decimal | None
+    vl_bc_icms: Decimal | None
+    vl_icms: Decimal | None
+
+
+@dataclass
+class ParsedD190:
+    line_number: int
+    parent_d100_line_number: int | None
+    cst_icms: str | None
+    cfop: str | None
+    aliq_icms: Decimal | None
+    vl_opr: Decimal | None
+    vl_bc_icms: Decimal | None
+    vl_icms: Decimal | None
+    vl_red_bc: Decimal | None
+    cod_obs: str | None
+
+
+@dataclass
 class ParsedK200:
     line_number: int
     parent_k100_line_number: int | None
@@ -290,6 +323,8 @@ class EfdStructuredParseResult:
     bloco_g125_records: list[ParsedG125] = field(default_factory=list)
     bloco_k100_records: list[ParsedK100] = field(default_factory=list)
     bloco_k200_records: list[ParsedK200] = field(default_factory=list)
+    d100_records: list[ParsedD100] = field(default_factory=list)
+    d190_records: list[ParsedD190] = field(default_factory=list)
     total_lines: int = 0
     error: str | None = None
 
@@ -297,6 +332,7 @@ class EfdStructuredParseResult:
 def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
     result = EfdStructuredParseResult()
     current_c100_line: int | None = None
+    current_d100_line: int | None = None
     current_e111_line: int | None = None
     current_e500_line: int | None = None
     current_h005_line: int | None = None
@@ -343,6 +379,17 @@ def parse_efd_structured(file_path: str) -> EfdStructuredParseResult:
                     parsed = _parse_c190(parts, line_no, current_c100_line)
                     if parsed:
                         result.c190_records.append(parsed)
+
+                elif rec == "D100":
+                    current_d100_line = line_no
+                    parsed = _parse_d100(parts, line_no)
+                    if parsed:
+                        result.d100_records.append(parsed)
+
+                elif rec == "D190":
+                    parsed = _parse_d190(parts, line_no, current_d100_line)
+                    if parsed:
+                        result.d190_records.append(parsed)
 
                 elif rec == "E110":
                     parsed = _parse_e110(parts, line_no)
@@ -710,6 +757,48 @@ def _parse_k200(parts: list[str], line_no: int, parent: int | None) -> ParsedK20
         qtd=_dec(parts[4]) if len(parts) > 4 else None,
         ind_est=_str(parts[5]) if len(parts) > 5 else None,
         cod_part=_str(parts[6]) if len(parts) > 6 else None,
+    )
+
+
+def _parse_d100(parts: list[str], line_no: int) -> ParsedD100 | None:
+    # |D100|IND_OPER|IND_EMIT|COD_PART|COD_MOD|COD_SIT|SER|NUM_DOC|CHV_CTE|
+    #  DT_DOC|DT_A_P|TP_CT-e|CHV_CTE_REF|VL_DOC|VL_DESC|VL_SERV|VL_BC_ICMS|VL_ICMS|...
+    if len(parts) < 15:
+        return None
+    return ParsedD100(
+        line_number=line_no,
+        ind_oper=_str(parts[2]),
+        ind_emit=_str(parts[3]),
+        cod_part=_str(parts[4]),
+        cod_mod=_str(parts[5]),
+        cod_sit=_str(parts[6]),
+        ser=_str(parts[7]),
+        num_doc=_str(parts[8]),
+        chv_cte=_str(parts[9]),
+        dt_doc=_str(parts[10]),
+        vl_doc=_dec(parts[14]) if len(parts) > 14 else None,
+        vl_desc=_dec(parts[15]) if len(parts) > 15 else None,
+        vl_serv=_dec(parts[16]) if len(parts) > 16 else None,
+        vl_bc_icms=_dec(parts[17]) if len(parts) > 17 else None,
+        vl_icms=_dec(parts[18]) if len(parts) > 18 else None,
+    )
+
+
+def _parse_d190(parts: list[str], line_no: int, parent: int | None) -> ParsedD190 | None:
+    # |D190|CST_ICMS|CFOP|ALIQ_ICMS|VL_OPR|VL_BC_ICMS|VL_ICMS|VL_RED_BC|COD_OBS|
+    if len(parts) < 8:
+        return None
+    return ParsedD190(
+        line_number=line_no,
+        parent_d100_line_number=parent,
+        cst_icms=_str(parts[2]),
+        cfop=_str(parts[3]),
+        aliq_icms=_dec(parts[4]),
+        vl_opr=_dec(parts[5]),
+        vl_bc_icms=_dec(parts[6]),
+        vl_icms=_dec(parts[7]),
+        vl_red_bc=_dec(parts[8]) if len(parts) > 8 else None,
+        cod_obs=_str(parts[9]) if len(parts) > 9 else None,
     )
 
 

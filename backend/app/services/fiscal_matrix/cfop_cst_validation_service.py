@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.models.efd_c190 import EfdC190Analytics
 from app.models.fiscal_matrix import CfopCstFullRule
-from app.services.conference.engine import Finding
+from app.services.conference.engine import Finding, _cst_situation
 
 
 def run_cfop_cst_validation(
@@ -55,7 +55,8 @@ def run_cfop_cst_validation(
 
     for (cfop, cst_icms) in combos:
         cfop_str = cfop or ""
-        cst_str = cst_icms or ""
+        cst_raw = (cst_icms or "").strip()
+        cst_str = _cst_situation(cst_raw)  # normaliza para 2 dígitos
         key = (cfop_str, cst_str)
 
         matched_rules = rules_index.get(key, [])
@@ -66,14 +67,14 @@ def run_cfop_cst_validation(
                 rule_code="REGRA-CFOP-CST-001",
                 severity="observacao",
                 finding_type="cfop_cst_sem_regra",
-                title=f"CFOP {cfop_str} × CST {cst_str}: combinação sem regra na matriz",
+                title=f"CFOP {cfop_str} × CST {cst_raw}: combinação sem regra na matriz",
                 description=(
-                    f"A combinação CFOP {cfop_str} / CST {cst_str} não foi encontrada "
+                    f"A combinação CFOP {cfop_str} / CST {cst_raw} não foi encontrada "
                     "na matriz CFOP×CST completa. Verifique se a regra foi importada."
                 ),
                 register_code="C190",
                 cfop=cfop_str,
-                cst=cst_str,
+                cst=cst_raw,
                 tax_type="icms",
             ))
             continue
@@ -84,14 +85,14 @@ def run_cfop_cst_validation(
                     rule_code="REGRA-CFOP-CST-002",
                     severity=rule.severity,
                     finding_type="cfop_cst_alerta",
-                    title=f"CFOP {cfop_str} × CST {cst_str}: atenção na combinação",
+                    title=f"CFOP {cfop_str} × CST {cst_raw}: atenção na combinação",
                     description=rule.description or (
-                        f"A combinação CFOP {cfop_str} / CST {cst_str} gerou alerta "
+                        f"A combinação CFOP {cfop_str} / CST {cst_raw} gerou alerta "
                         "conforme a matriz CFOP×CST."
                     ),
                     register_code="C190",
                     cfop=cfop_str,
-                    cst=cst_str,
+                    cst=cst_raw,
                     tax_type="icms",
                 ))
             elif rule.rule_behavior == "blocked":
@@ -99,14 +100,14 @@ def run_cfop_cst_validation(
                     rule_code="REGRA-CFOP-CST-003",
                     severity="critico",
                     finding_type="cfop_cst_bloqueado",
-                    title=f"CFOP {cfop_str} × CST {cst_str}: combinação bloqueada pela matriz",
+                    title=f"CFOP {cfop_str} × CST {cst_raw}: combinação bloqueada pela matriz",
                     description=rule.description or (
-                        f"A combinação CFOP {cfop_str} / CST {cst_str} está marcada como "
+                        f"A combinação CFOP {cfop_str} / CST {cst_raw} está marcada como "
                         "bloqueada na matriz CFOP×CST. Esta combinação não é permitida."
                     ),
                     register_code="C190",
                     cfop=cfop_str,
-                    cst=cst_str,
+                    cst=cst_raw,
                     tax_type="icms",
                 ))
 

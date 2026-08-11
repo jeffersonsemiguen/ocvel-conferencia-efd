@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Users, ArrowRight, Table2, FileSpreadsheet } from "lucide-react";
+import { Users, ArrowRight, Table2, FileSpreadsheet, SlidersHorizontal } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -119,6 +119,22 @@ export default function AdminPage() {
                 <p className="text-sm font-semibold">Matriz Fiscal CFOP × CST</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Importar e gerenciar as regras da matriz CFOP × CST ICMS
+                </p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/settings/validation-rules">
+          <Card className="hover:bg-accent transition-colors cursor-pointer group">
+            <CardContent className="flex items-center gap-4 py-4 px-5">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <SlidersHorizontal className="w-4 h-4" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Regras de Validação</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Ativar/desativar regras, ajustar severidade e configurar exclusões por CFOP
                 </p>
               </div>
               <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />

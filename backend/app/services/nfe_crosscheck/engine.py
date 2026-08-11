@@ -10,10 +10,15 @@ from app.models.company import Company
 from app.models.efd_file import EfdFile
 from app.models.fiscal_period import FiscalPeriod
 from app.models.validation import ValidationFinding, ValidationRun
+from app.models.validation_rule_config import ValidationRuleConfig
 from app.services.nfe_crosscheck.matcher import MatchResult, match_nfe_to_c100
 from app.services.nfe_crosscheck.rules.entradas import run_entrada_rules
 from app.services.nfe_crosscheck.rules.saidas import run_saida_rules
 from app.services.nfe_crosscheck.suggestion_mapper import generate_cst_suggestions
+
+
+def _load_rule_configs(db: Session) -> dict[str, ValidationRuleConfig]:
+    return {r.rule_code: r for r in db.query(ValidationRuleConfig).all()}
 
 
 @dataclass
@@ -82,13 +87,15 @@ def run_nfe_crosscheck(
         return run
 
     company = db.query(Company).filter(Company.id == period.company_id).first()
+    rule_configs = _load_rule_configs(db)
 
     _resolve_c100_cnpjs(db, efd_file.id)
     _resolve_c100_predominant_cst(db, efd_file.id)
+    _resolve_c100_predominant_cfop(db, efd_file.id)
 
     match: MatchResult = match_nfe_to_c100(db, fiscal_period_id, efd_file.id)
 
-    run_entrada_rules(db, match, company, monetary_tolerance, findings)
+    run_entrada_rules(db, match, company, monetary_tolerance, findings, rule_configs)
     run_saida_rules(db, match, company, monetary_tolerance, findings)
 
     _save_findings(db, run, findings)
@@ -111,6 +118,36 @@ def _resolve_c100_cnpjs(db: Session, efd_file_id: uuid.UUID) -> None:
     }
     for c in db.query(EfdC100Doc).filter(EfdC100Doc.efd_file_id == efd_file_id).all():
         c._resolved_cnpj_emit = parts.get(c.cod_part)
+
+
+def _resolve_c100_predominant_cfop(db: Session, efd_file_id: uuid.UUID) -> None:
+    """Attaches the predominant CFOP from C190 records to each C100 as a transient attribute."""
+    from app.models.efd_c100 import EfdC100Doc
+    from app.models.efd_c190 import EfdC190Analytics
+    from sqlalchemy import func
+
+    rows = (
+        db.query(
+            EfdC190Analytics.parent_c100_line_number,
+            EfdC190Analytics.cfop,
+            func.count(EfdC190Analytics.id).label("cnt"),
+        )
+        .filter(EfdC190Analytics.efd_file_id == efd_file_id)
+        .group_by(EfdC190Analytics.parent_c100_line_number, EfdC190Analytics.cfop)
+        .all()
+    )
+
+    best: dict[int, tuple[str, int]] = {}
+    for r in rows:
+        if r.parent_c100_line_number is None or not r.cfop:
+            continue
+        ln = r.parent_c100_line_number
+        if ln not in best or r.cnt > best[ln][1]:
+            best[ln] = (r.cfop, r.cnt)
+
+    for c in db.query(EfdC100Doc).filter(EfdC100Doc.efd_file_id == efd_file_id).all():
+        entry = best.get(c.line_number)
+        c._predominant_cfop = entry[0] if entry else None
 
 
 def _resolve_c100_predominant_cst(db: Session, efd_file_id: uuid.UUID) -> None:

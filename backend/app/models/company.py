@@ -24,6 +24,9 @@ class Company(Base):
     # CIAP — Controle de Crédito do Ativo Permanente. If true, EFD must include Bloco G.
     uses_ciap: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # IPI — contribuinte de IPI. Habilita validações de apuração IPI (E520/E510).
+    is_ipi_contributor: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Bloco K — Livro de Registro de Controle da Produção e do Estoque.
     # "nao_aplica" | "simplificado" (K200/K280 only) | "completo" (all K records)
     bloco_k_tipo: Mapped[str] = mapped_column(String(20), default="nao_aplica", nullable=False)

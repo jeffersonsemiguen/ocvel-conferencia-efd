@@ -13,8 +13,17 @@ Regras implementadas:
   REGRA-PR-001/002/003 — Códigos de ajuste PR (E111/E112/E113)
   REGRA-CAD-001      — C100 referencia participante não cadastrado no 0150
   REGRA-PART-001     — C190 referencia item não cadastrado no 0200
+  REGRA-ITEM-C170    — C170 referencia cod_item não cadastrado no 0200
+  CONF-D190-D100     — D190 vs D100: soma dos filhos deve bater com o CT-e
   REGRA-H-001        — H005 sem itens H010 (inventário vazio)
   REGRA-H-002        — Valor total H005 diverge da soma dos H010
+  CONF-C170-SEQ      — NUM_ITEM dos C170 não é sequencial por C100 (gera renumeração automática)
+  REGRA-DF02A/B/C/D  — Documentos fiscais em papel (Receita PR)
+  REGRA-DF08         — Duplicidade de chave NF-e no arquivo
+  REGRA-DF03A/B      — Divergência de status EFD × SEFAZ (requer NF-e)
+  REGRA-DF06A        — Destinatário divergente EFD × NF-e (requer NF-e)
+  REGRA-AJDF01       — Ajuste sem documentos E113 vinculados
+  REGRA-AJCP01       — Ajuste PR020021 sem CIAP (Bloco G)
 """
 from __future__ import annotations
 
@@ -104,11 +113,13 @@ def run_conference(
     # ── 3. Apuração ICMS (E110) vs referência ───────────────────────────────
     _conf_e110(db, efd_file_id, refs_by_op.get("apuracao_icms", []), tol, findings)
 
-    # ── 4. Apuração IPI (E520) vs referência ────────────────────────────────
-    _conf_e520(db, efd_file_id, refs_by_op.get("apuracao_ipi", []), tol, findings)
+    # ── 4. Apuração IPI (E520) vs referência — só para contribuintes de IPI ──
+    if _is_ipi_contributor(db, fiscal_period_id):
+        _conf_e520(db, efd_file_id, refs_by_op.get("apuracao_ipi", []), tol, findings)
 
-    # ── 5. Consolidação IPI (E510) vs referência ────────────────────────────
-    _conf_e510(db, efd_file_id, refs_by_op.get("apuracao_ipi", []), tol, findings)
+    # ── 5. Consolidação IPI (E510) vs referência ─────────────────────────────
+    if _is_ipi_contributor(db, fiscal_period_id):
+        _conf_e510(db, efd_file_id, refs_by_op.get("apuracao_ipi", []), tol, findings)
 
     # ── 6. Validação de códigos de ajuste PR (E111/E112/E113) ────────────────
     _conf_pr_adjustments(db, efd_file_id, findings)
@@ -119,6 +130,9 @@ def run_conference(
     # ── 8. Cadastro de itens (0200 × C190) ──────────────────────────────────
     _conf_part_001(db, efd_file_id, findings)
 
+    # ── 8b. Cadastro de itens (0200 × C170) ──────────────────────────────────
+    _conf_item_c170(db, efd_file_id, findings)
+
     # ── 9. Bloco H — inventário ──────────────────────────────────────────────
     _conf_bloco_h(db, efd_file_id, tol, findings)
 
@@ -128,12 +142,25 @@ def run_conference(
     # ── 11. Matriz CFOP×CST (versão completa) ────────────────────────────────
     _conf_cfop_cst_matrix(db, efd_file_id, fiscal_period_id, findings)
 
+    # ── 12. C170 NUM_ITEM sequencial ─────────────────────────────────────────
+    _conf_c170_seq(db, efd_file_id, findings)
+
+    # ── 13. Validações DF/AJ da Receita Estadual PR ──────────────────────────
+    _conf_pr_df(db, efd_file_id, fiscal_period_id, findings)
+
+    # ── 14. Bloco D — CT-e (D190 × D100) ─────────────────────────────────────
+    _conf_d190_vs_d100(db, efd_file_id, tol, findings)
+
     # Persiste findings
     _save_findings(db, run, findings)
 
     # Gera sugestões de correção C190 (requer run.id já persistido)
     from app.services.corrections.c190_suggestion_generator import generate_c190_suggestions
     generate_c190_suggestions(db, run, efd_file_id, tol)
+
+    # Gera sugestões de renumeração C170 (requer CONF-C170-SEQ já persistido)
+    from app.services.corrections.c170_seq_suggestion_generator import generate_c170_seq_suggestions
+    generate_c170_seq_suggestions(db, run, efd_file_id)
 
     # Registrar evento de conferência concluída
     try:
@@ -172,6 +199,18 @@ def _to_dec(v) -> Decimal:
     if v is None:
         return Decimal(0)
     return Decimal(str(v))
+
+
+def _cst_situation(cst: str) -> str:
+    """Normaliza CST ICMS para 2 dígitos (situação tributária).
+
+    No SPED EFD o CST pode vir com 3 dígitos (ex: '060') onde o
+    primeiro dígito é a origem da mercadoria (0=nacional, 1=importação
+    direta, 2=adquirida no mercado interno, etc.). Para comparação com
+    regras CFOP×CST usa-se apenas os 2 últimos dígitos ('60').
+    """
+    cst = cst.strip()
+    return cst[-2:] if len(cst) == 3 else cst
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -301,10 +340,12 @@ def _conf_cfop_cst(
 
     for c190 in c190_rows:
         cfop = (c190.cfop or "").strip()
-        cst = (c190.cst_icms or "").strip()
-        if not cfop or not cst:
+        cst_raw = (c190.cst_icms or "").strip()
+        if not cfop or not cst_raw:
             continue
 
+        # Normaliza CST para 2 dígitos (sem o dígito de origem)
+        cst = _cst_situation(cst_raw)
         direction = op_type(cfop)
 
         for rule in rules:
@@ -315,36 +356,36 @@ def _conf_cfop_cst(
 
             # Verifica CSTs proibidos
             if rule.disallowed_cst:
-                bad = {c.strip() for c in rule.disallowed_cst.split(",")}
+                bad = {_cst_situation(c.strip()) for c in rule.disallowed_cst.split(",")}
                 if cst in bad:
                     findings.append(Finding(
                         rule_code="CONF-CFOP-CST",
                         severity=rule.severity,
                         finding_type="cfop_cst_incompativel",
-                        title=f"CFOP {cfop} com CST {cst} — combinação incompatível",
+                        title=f"CFOP {cfop} com CST {cst_raw} — combinação incompatível",
                         description=rule.description,
                         register_code="C190",
                         field_name="cst_icms",
                         cfop=cfop,
-                        cst=cst,
+                        cst=cst_raw,
                         tax_type="icms",
                         operation_type=direction,
                     ))
 
             # Verifica CSTs obrigatórios (allowed = exclusivo)
             if rule.allowed_cst:
-                allowed = {c.strip() for c in rule.allowed_cst.split(",")}
+                allowed = {_cst_situation(c.strip()) for c in rule.allowed_cst.split(",")}
                 if cst not in allowed:
                     findings.append(Finding(
                         rule_code="CONF-CFOP-CST",
                         severity=rule.severity,
                         finding_type="cfop_cst_incompativel",
-                        title=f"CFOP {cfop} com CST {cst} — CST fora do permitido ({rule.allowed_cst})",
+                        title=f"CFOP {cfop} com CST {cst_raw} — CST fora do permitido ({rule.allowed_cst})",
                         description=rule.description,
                         register_code="C190",
                         field_name="cst_icms",
                         cfop=cfop,
-                        cst=cst,
+                        cst=cst_raw,
                         tax_type="icms",
                         operation_type=direction,
                     ))
@@ -694,6 +735,53 @@ def _conf_pr_adjustments(
     findings.extend(new_findings)
 
 
+def _conf_item_c170(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    findings: list[Finding],
+) -> None:
+    """REGRA-ITEM-C170: C170 referencia COD_ITEM que não existe no registro 0200."""
+    from app.models.efd_c170 import EfdC170Item
+
+    known_items = {
+        r.cod_item
+        for r in db.query(EfdBloco0Item.cod_item)
+        .filter(EfdBloco0Item.efd_file_id == efd_file_id)
+        .all()
+        if r.cod_item
+    }
+
+    if not known_items:
+        return
+
+    missing = (
+        db.query(EfdC170Item.cod_item)
+        .filter(
+            EfdC170Item.efd_file_id == efd_file_id,
+            EfdC170Item.cod_item.isnot(None),
+            EfdC170Item.cod_item != "",
+            EfdC170Item.cod_item.notin_(known_items),
+        )
+        .distinct()
+        .all()
+    )
+
+    for (cod_item,) in missing:
+        findings.append(Finding(
+            rule_code="REGRA-ITEM-C170",
+            severity="alerta",
+            finding_type="item_nao_cadastrado",
+            title=f"Item '{cod_item}' usado em C170 não está cadastrado no 0200",
+            description=(
+                f"O código de item '{cod_item}' aparece em registros C170 (itens de NF) "
+                "mas não foi encontrado na tabela de identificação de itens (registro 0200) "
+                "do arquivo EFD."
+            ),
+            register_code="C170",
+            field_name="cod_item",
+        ))
+
+
 def _conf_bloco_h(
     db: Session,
     efd_file_id: uuid.UUID,
@@ -868,6 +956,158 @@ def _conf_part_001(
             register_code="E113",
             field_name="cod_item",
         ))
+
+
+def _is_ipi_contributor(db: Session, fiscal_period_id: uuid.UUID) -> bool:
+    from app.models.fiscal_period import FiscalPeriod
+    from app.models.company import Company
+    period = db.query(FiscalPeriod).filter(FiscalPeriod.id == fiscal_period_id).first()
+    if not period:
+        return False
+    company = db.query(Company).filter(Company.id == period.company_id).first()
+    return bool(company and getattr(company, "is_ipi_contributor", False))
+
+
+def _conf_d190_vs_d100(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    tol: Decimal,
+    findings: list[Finding],
+) -> None:
+    """CONF-D190-D100: soma dos D190 filhos deve bater com D100 (CT-e)."""
+    from app.models.efd_d100 import EfdD100Doc
+    from app.models.efd_d190 import EfdD190Analytics
+
+    d100_rows = (
+        db.query(EfdD100Doc)
+        .filter(
+            EfdD100Doc.efd_file_id == efd_file_id,
+            EfdD100Doc.cod_sit.notin_(["02", "03", "04", "05", "2", "3", "4", "5"]),
+        )
+        .all()
+    )
+    if not d100_rows:
+        return
+
+    d190_agg = (
+        db.query(
+            EfdD190Analytics.parent_d100_line_number,
+            func.sum(EfdD190Analytics.vl_opr).label("vl_opr"),
+            func.sum(EfdD190Analytics.vl_bc_icms).label("vl_bc_icms"),
+            func.sum(EfdD190Analytics.vl_icms).label("vl_icms"),
+        )
+        .filter(
+            EfdD190Analytics.efd_file_id == efd_file_id,
+            EfdD190Analytics.parent_d100_line_number.isnot(None),
+        )
+        .group_by(EfdD190Analytics.parent_d100_line_number)
+        .all()
+    )
+    d190_map = {r.parent_d100_line_number: r for r in d190_agg}
+    op_label = {None: "?", "0": "Entrada", "1": "Saída"}
+
+    for d100 in d100_rows:
+        d190 = d190_map.get(d100.line_number)
+        if d190 is None:
+            continue
+
+        doc_id = f"CT-e {d100.num_doc or '?'}/{d100.ser or '?'} ({op_label.get(d100.ind_oper, '?')})"
+
+        comparisons = [
+            ("vl_opr",     d190.vl_opr,     d100.vl_doc,     "Valor da operação (D190) vs Valor do CT-e (D100)"),
+            ("vl_bc_icms", d190.vl_bc_icms, d100.vl_bc_icms, "Base de cálculo ICMS"),
+            ("vl_icms",    d190.vl_icms,    d100.vl_icms,    "ICMS"),
+        ]
+
+        for field_name, d190_val, d100_val, label in comparisons:
+            if d100_val is None:
+                continue
+            efd_agg = _to_dec(d190_val)
+            doc_val = _to_dec(d100_val)
+            diff = abs(efd_agg - doc_val)
+            if diff > tol:
+                findings.append(Finding(
+                    rule_code="CONF-D190-D100",
+                    severity="critico" if diff > Decimal("1000") else "divergencia_monetaria",
+                    finding_type="divergencia_monetaria",
+                    title=f"{doc_id} — {label}: D190 ≠ D100",
+                    description=(
+                        f"Soma D190: R$ {float(efd_agg):,.2f} | "
+                        f"D100: R$ {float(doc_val):,.2f} | "
+                        f"Diferença: R$ {float(diff):,.2f}"
+                    ),
+                    register_code="D190/D100",
+                    field_name=field_name,
+                    tax_type="icms" if "icms" in field_name else None,
+                    operation_type="entrada" if d100.ind_oper == "0" else "saida",
+                    efd_value=float(efd_agg),
+                    reference_value=float(doc_val),
+                    difference_value=float(diff),
+                ))
+
+
+def _conf_pr_df(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    fiscal_period_id: uuid.UUID,
+    findings: list[Finding],
+) -> None:
+    from app.services.pr_rules.pr_df_validation_service import run_pr_df_validation
+    new_findings = run_pr_df_validation(db, efd_file_id, fiscal_period_id)
+    findings.extend(new_findings)
+
+
+def _conf_c170_seq(
+    db: Session,
+    efd_file_id: uuid.UUID,
+    findings: list[Finding],
+) -> None:
+    """CONF-C170-SEQ: NUM_ITEM dos registros C170 deve ser sequencial (1..N) por C100."""
+    from app.models.efd_c170 import EfdC170Item
+
+    c170_rows = (
+        db.query(EfdC170Item)
+        .filter(EfdC170Item.efd_file_id == efd_file_id)
+        .order_by(EfdC170Item.parent_c100_line_number, EfdC170Item.line_number)
+        .all()
+    )
+    if not c170_rows:
+        return
+
+    by_parent: dict[int | None, list[EfdC170Item]] = {}
+    for row in c170_rows:
+        by_parent.setdefault(row.parent_c100_line_number, []).append(row)
+
+    affected: list[tuple[int | None, list[int | None]]] = []
+    for parent_line, items in by_parent.items():
+        nums = [i.num_item for i in items]
+        expected = list(range(1, len(items) + 1))
+        if nums != expected:
+            affected.append((parent_line, nums))
+
+    if not affected:
+        return
+
+    desc_parts = []
+    for c100_line, nums in affected[:5]:
+        seq_str = str(nums[:8])[1:-1] + ("..." if len(nums) > 8 else "")
+        desc_parts.append(f"C100 linha {c100_line}: [{seq_str}]")
+    if len(affected) > 5:
+        desc_parts.append(f"...e mais {len(affected) - 5} documento(s)")
+
+    findings.append(Finding(
+        rule_code="CONF-C170-SEQ",
+        severity="alerta",
+        finding_type="sequencial_incorreto",
+        title=f"NUM_ITEM não sequencial em {len(affected)} documento(s) C100",
+        description=(
+            f"O campo NUM_ITEM dos registros C170 possui duplicatas ou lacunas em "
+            f"{len(affected)} documento(s). O PVA rejeita arquivos com esta inconsistência. "
+            f"Detalhes: {'; '.join(desc_parts)}"
+        ),
+        register_code="C170",
+        field_name="num_item",
+    ))
 
 
 def _conf_structural(

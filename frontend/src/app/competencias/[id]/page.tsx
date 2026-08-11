@@ -1442,6 +1442,470 @@ const SEVERITY_CONFIG: Record<string, { label: string; variant: "default" | "sec
   observacao:           { label: "Observação",           variant: "outline",     color: "text-muted-foreground" },
 };
 
+// ─── Aba Relatório CFOP ───────────────────────────────────────────────────────
+
+interface CfopC190Row { cfop: string; vl_opr: number; vl_bc_icms: number; vl_icms: number; vl_icms_st: number; vl_ipi: number }
+interface CfopC170Row { cfop: string; vl_item: number; vl_opr: number; vl_bc_icms: number; vl_icms: number }
+interface CfopD190Row { cfop: string; vl_opr: number; vl_bc_icms: number; vl_icms: number }
+
+function fmtCfop(cfop: string): string {
+  return cfop.length === 4 ? `${cfop[0]}.${cfop.slice(1)}` : cfop;
+}
+
+function fmtBRL(v: number): string {
+  return v === 0 ? "—" : v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function sum(rows: { [k: string]: number }[], key: string): number {
+  return rows.reduce((acc, r) => acc + (r[key] ?? 0), 0);
+}
+
+function CfopSectionRows({ rows, keys }: {
+  rows: Record<string, number>[];
+  keys: { field: string; label: string }[];
+}) {
+  const entradas = rows.filter(r => ["1","2","3"].includes((r.cfop as string)?.[0]));
+  const saidas   = rows.filter(r => ["5","6","7"].includes((r.cfop as string)?.[0]));
+
+  function subtotalRow(label: string, subset: Record<string, number>[]) {
+    return (
+      <TableRow key={label} className="bg-blue-50 dark:bg-blue-950/20 font-semibold">
+        <TableCell className="text-blue-700 dark:text-blue-400">{label}</TableCell>
+        {keys.map(k => (
+          <TableCell key={k.field} className="text-right font-mono text-blue-700 dark:text-blue-400">
+            {fmtBRL(sum(subset, k.field))}
+          </TableCell>
+        ))}
+      </TableRow>
+    );
+  }
+
+  return (
+    <>
+      {/* Entradas */}
+      {entradas.length > 0 && (
+        <TableRow className="bg-muted/30">
+          <TableCell colSpan={keys.length + 1} className="text-xs font-semibold text-muted-foreground uppercase tracking-wide py-1">
+            Entradas (1xx / 2xx / 3xx)
+          </TableCell>
+        </TableRow>
+      )}
+      {entradas.map(r => (
+        <TableRow key={r.cfop as string}>
+          <TableCell className="font-mono font-medium">{fmtCfop(r.cfop as string)}</TableCell>
+          {keys.map(k => (
+            <TableCell key={k.field} className="text-right font-mono">{fmtBRL(r[k.field])}</TableCell>
+          ))}
+        </TableRow>
+      ))}
+      {entradas.length > 0 && subtotalRow("Subtotal Entradas", entradas)}
+
+      {/* Saídas */}
+      {saidas.length > 0 && (
+        <TableRow className="bg-muted/30">
+          <TableCell colSpan={keys.length + 1} className="text-xs font-semibold text-muted-foreground uppercase tracking-wide py-1">
+            Saídas (5xx / 6xx / 7xx)
+          </TableCell>
+        </TableRow>
+      )}
+      {saidas.map(r => (
+        <TableRow key={r.cfop as string}>
+          <TableCell className="font-mono font-medium">{fmtCfop(r.cfop as string)}</TableCell>
+          {keys.map(k => (
+            <TableCell key={k.field} className="text-right font-mono">{fmtBRL(r[k.field])}</TableCell>
+          ))}
+        </TableRow>
+      ))}
+      {saidas.length > 0 && subtotalRow("Subtotal Saídas", saidas)}
+
+      {/* Total geral */}
+      {rows.length > 0 && (
+        <TableRow className="bg-muted/60 font-bold border-t-2">
+          <TableCell>Total Geral</TableCell>
+          {keys.map(k => (
+            <TableCell key={k.field} className="text-right font-mono">{fmtBRL(sum(rows, k.field))}</TableCell>
+          ))}
+        </TableRow>
+      )}
+    </>
+  );
+}
+
+function RelatorioCfopTab({ period }: { period: FiscalPeriod }) {
+  const [files, setFiles] = useState<EfdFile[]>([]);
+  const [selectedFileId, setSelectedFileId] = useState<string>("");
+  const [c190, setC190] = useState<CfopC190Row[]>([]);
+  const [c170, setC170] = useState<CfopC170Row[]>([]);
+  const [d190, setD190] = useState<CfopD190Row[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingFiles, setLoadingFiles] = useState(true);
+  const [view, setView] = useState<"c190" | "c170" | "d190">("c190");
+
+  useEffect(() => {
+    api.get<EfdFile[]>(`/api/v1/fiscal-periods/${period.id}/efd-files`)
+      .then(fs => {
+        setFiles(fs);
+        const active = fs.find(f => f.parse_status === "parsed") ?? fs[0];
+        if (active) setSelectedFileId(active.id);
+      })
+      .finally(() => setLoadingFiles(false));
+  }, [period.id]);
+
+  useEffect(() => {
+    if (!selectedFileId) return;
+    setLoading(true);
+    api.get<{ c190: CfopC190Row[]; c170: CfopC170Row[] }>(
+      `/api/v1/efd-files/${selectedFileId}/relatorio/cfop-totals`
+    )
+      .then(d => { setC190(d.c190); setC170(d.c170); setD190(d.d190 ?? []); })
+      .catch(() => toast.error("Erro ao carregar relatório"))
+      .finally(() => setLoading(false));
+  }, [selectedFileId]);
+
+  if (loadingFiles) return <p className="text-muted-foreground text-sm">Carregando...</p>;
+  if (files.length === 0) return <p className="text-muted-foreground text-sm">Nenhum arquivo EFD processado.</p>;
+
+  const c190Keys = [
+    { field: "vl_opr",      label: "Operação (R$)" },
+    { field: "vl_bc_icms",  label: "Base Calc. ICMS (R$)" },
+    { field: "vl_icms",     label: "ICMS (R$)" },
+    { field: "vl_icms_st",  label: "ST (R$)" },
+    { field: "vl_ipi",      label: "IPI (R$)" },
+  ];
+  const c170Keys = [
+    { field: "vl_item",    label: "Valor Item (R$)" },
+    { field: "vl_opr",     label: "Operação (R$)" },
+    { field: "vl_bc_icms", label: "Base Calc. ICMS (R$)" },
+    { field: "vl_icms",    label: "ICMS (R$)" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Botões C190 / C170 */}
+        <div className="flex rounded-md border overflow-hidden">
+          <button
+            onClick={() => setView("c190")}
+            className={`px-4 py-1.5 text-sm font-medium transition-colors ${view === "c190" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+          >
+            C190 — Analítico
+          </button>
+          <button
+            onClick={() => setView("c170")}
+            className={`px-4 py-1.5 text-sm font-medium transition-colors border-l ${view === "c170" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+          >
+            C170 — Itens
+          </button>
+          <button
+            onClick={() => setView("d190")}
+            className={`px-4 py-1.5 text-sm font-medium transition-colors border-l ${view === "d190" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+          >
+            D190 — CT-e
+          </button>
+        </div>
+
+        {/* Seletor de arquivo */}
+        {files.length > 1 && (
+          <select
+            className="border rounded px-2 py-1.5 text-sm bg-background"
+            value={selectedFileId}
+            onChange={e => setSelectedFileId(e.target.value)}
+          >
+            {files.map(f => (
+              <option key={f.id} value={f.id}>{f.original_filename}</option>
+            ))}
+          </select>
+        )}
+
+        {loading && <span className="text-muted-foreground text-sm">Carregando...</span>}
+      </div>
+
+      {/* Tabela C190 */}
+      {view === "c190" && (
+        <div>
+          <h3 className="font-semibold mb-2 text-sm">Registros C190 — Analítico por CFOP</h3>
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-20">CFOP</TableHead>
+                  {c190Keys.map(k => (
+                    <TableHead key={k.field} className="text-right">{k.label}</TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {c190.length === 0 && !loading
+                  ? <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">Sem registros C190</TableCell></TableRow>
+                  : <CfopSectionRows rows={c190 as never[]} keys={c190Keys} />
+                }
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
+      {/* Tabela C170 */}
+      {view === "c170" && (
+        <div>
+          <h3 className="font-semibold mb-2 text-sm">Registros C170 — Itens por CFOP</h3>
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-20">CFOP</TableHead>
+                  {c170Keys.map(k => (
+                    <TableHead key={k.field} className="text-right">{k.label}</TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {c170.length === 0 && !loading
+                  ? <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Sem registros C170 (re-parse necessário se o arquivo for antigo)</TableCell></TableRow>
+                  : <CfopSectionRows rows={c170 as never[]} keys={c170Keys} />
+                }
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
+      {/* Tabela D190 — CT-e */}
+      {view === "d190" && (
+        <div>
+          <h3 className="font-semibold mb-2 text-sm">Registros D190 — CT-e por CFOP</h3>
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-20">CFOP</TableHead>
+                  <TableHead className="text-right">Operação (R$)</TableHead>
+                  <TableHead className="text-right">Base Calc. ICMS (R$)</TableHead>
+                  <TableHead className="text-right">ICMS (R$)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {d190.length === 0 && !loading
+                  ? <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">Sem registros D190 (arquivo sem CT-e ou re-parse necessário)</TableCell></TableRow>
+                  : <CfopSectionRows rows={d190 as never[]} keys={[
+                      { field: "vl_opr",     label: "Operação (R$)" },
+                      { field: "vl_bc_icms", label: "Base Calc. ICMS (R$)" },
+                      { field: "vl_icms",    label: "ICMS (R$)" },
+                    ]} />
+                }
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Findings agrupados ───────────────────────────────────────────────────────
+
+const RULE_LABELS: Record<string, string> = {
+  "CONF-C190-C100":             "C190 × C100 — Totalizadores divergentes",
+  "CONF-C190-VL-OPR":          "C190 × Referência — Valor contábil",
+  "CONF-C190-BC-ICMS":         "C190 × Referência — Base ICMS",
+  "CONF-C190-ICMS":            "C190 × Referência — ICMS",
+  "CONF-C190-ICMS-ST":         "C190 × Referência — ICMS-ST",
+  "CONF-C190-IPI":             "C190 × Referência — IPI",
+  "CONF-C190-AUSENCIA-EFD":    "C190 — CFOP/CST sem registro no TXT",
+  "CONF-C190-SEM-REFERENCIA":  "C190 — CFOP/CST sem referência de apuração",
+  "CONF-CFOP-CST":             "CFOP × CST — Combinação incompatível",
+  "CONF-E110-VL_ICMS_RECOLHER":"E110 — ICMS a recolher divergente",
+  "CONF-E110-VL_TOT_DEBITOS":  "E110 — Total débitos divergente",
+  "CONF-E110-AUSENTE":         "E110 — Registro ausente no TXT",
+  "CONF-E110-SEM-REFERENCIA":  "E110 — Sem referência de apuração",
+  "CONF-E520-SALDO":           "E520 — Saldo IPI divergente",
+  "CONF-E520-DEBITOS":         "E520 — Débitos IPI divergentes",
+  "CONF-E520-AUSENTE":         "E520 — Registro ausente no TXT",
+  "CONF-E510-IPI":             "E510 — Consolidação IPI divergente",
+  "CONF-REF-PENDENTE":         "Referências não revisadas",
+  "REGRA-PR-001":              "PR — Código de ajuste inexistente",
+  "REGRA-PR-002":              "PR — Código fora do período de vigência",
+  "REGRA-PR-003":              "PR — Register E111 incorreto",
+  "REGRA-PR-004":              "PR — E112 exigido mas ausente",
+  "REGRA-PR-005":              "PR — E113 exigido mas ausente",
+  "REGRA-PR-006":              "PR — Processo exigido mas ausente",
+  "REGRA-PR-007":              "PR — Documento fiscal não encontrado em C100",
+  "REGRA-PR-008":              "PR — E113 sem dados mínimos",
+  "REGRA-PR-009":              "PR — IE auxiliar exigida mas não cadastrada",
+  "REGRA-PR-010":              "PR — Valor de ajuste zero",
+  "CONF-PR-SEM-TABELA":        "PR — Tabela 5.1.1 não carregada",
+  "REGRA-CAD-001":             "Participante sem cadastro em 0150",
+  "REGRA-PART-001":            "Item sem cadastro em 0200 (via E113)",
+  "REGRA-ITEM-C170":           "Item de NF (C170) sem cadastro no 0200",
+  "REGRA-H-001":               "Bloco H — Inventário sem itens H010",
+  "REGRA-H-002":               "Bloco H — Total H005 diverge dos itens H010",
+  "STRUCT-K":                  "Estrutural — Bloco K obrigatório ausente",
+  "STRUCT-H":                  "Estrutural — Bloco H obrigatório ausente",
+  "STRUCT-G":                  "Estrutural — Bloco G obrigatório ausente",
+  "CONF-C170-SEQ":             "C170 — NUM_ITEM fora de sequência",
+  "REGRA-DF02A":               "DF02A — NF papel de emissão própria",
+  "REGRA-DF02B":               "DF02B — NF papel entrada (emitente PR)",
+  "REGRA-DF02C":               "DF02C — NF papel entrada (outro estado)",
+  "REGRA-DF02D":               "DF02D — NF energia elétrica modelo 06",
+  "REGRA-DF08":                "DF08 — Chave NF-e duplicada no arquivo",
+  "REGRA-DF03A":               "DF03A — Autorizada na EFD, cancelada na SEFAZ",
+  "REGRA-DF03B":               "DF03B — Cancelada na EFD, autorizada na SEFAZ",
+  "REGRA-DF06A":               "DF06A — Destinatário divergente EFD × NF-e",
+  "REGRA-AJDF01":              "AJDF01 — Ajuste sem documentos E113",
+  "REGRA-AJCP01":              "AJCP01 — Ajuste PR020021 sem CIAP (Bloco G)",
+  "REGRA-CFOP-CST-001":        "Matriz CFOP×CST — Combinação sem regra",
+  "REGRA-CFOP-CST-002":        "Matriz CFOP×CST — Alerta de combinação",
+  "REGRA-CFOP-CST-003":        "Matriz CFOP×CST — Combinação bloqueada",
+};
+
+const SEV_ORDER: Record<string, number> = {
+  critico: 4, divergencia_monetaria: 3, alerta: 2, observacao: 1,
+};
+
+interface FindingGroup {
+  rule_code: string;
+  label: string;
+  severity: string;
+  count: number;
+  openCount: number;
+  findings: ValidationFinding[];
+}
+
+function groupFindingsByRule(findings: ValidationFinding[]): FindingGroup[] {
+  const map = new Map<string, FindingGroup>();
+  for (const f of findings) {
+    if (!map.has(f.rule_code)) {
+      map.set(f.rule_code, {
+        rule_code: f.rule_code,
+        label: RULE_LABELS[f.rule_code] ?? f.rule_code,
+        severity: f.severity,
+        count: 0,
+        openCount: 0,
+        findings: [],
+      });
+    }
+    const g = map.get(f.rule_code)!;
+    g.count++;
+    if (f.status === "open") g.openCount++;
+    g.findings.push(f);
+    if ((SEV_ORDER[f.severity] ?? 0) > (SEV_ORDER[g.severity] ?? 0)) g.severity = f.severity;
+  }
+  return Array.from(map.values()).sort((a, b) => {
+    const d = (SEV_ORDER[b.severity] ?? 0) - (SEV_ORDER[a.severity] ?? 0);
+    return d !== 0 ? d : b.count - a.count;
+  });
+}
+
+function FindingGroups({
+  groups,
+  expandedGroups,
+  toggleGroup,
+  updateStatus,
+}: {
+  groups: FindingGroup[];
+  expandedGroups: Set<string>;
+  toggleGroup: (code: string) => void;
+  updateStatus: (id: string, status: "acknowledged" | "resolved") => void;
+}) {
+  return (
+    <div className="space-y-2">
+      {groups.map(g => {
+        const isOpen = expandedGroups.has(g.rule_code);
+        const sev = SEVERITY_CONFIG[g.severity] ?? { label: g.severity, variant: "outline" as const, color: "" };
+        return (
+          <div key={g.rule_code} className="border rounded-lg overflow-hidden">
+            {/* Group header */}
+            <button
+              onClick={() => toggleGroup(g.rule_code)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                {isOpen
+                  ? <ChevronDownIcon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                  : <ChevronRightIcon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                }
+                <Badge variant={sev.variant} className="text-xs shrink-0">{sev.label}</Badge>
+                <span className="text-sm font-medium truncate">{g.label}</span>
+                <span className="text-xs text-muted-foreground font-mono shrink-0">{g.rule_code}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 ml-4">
+                {g.openCount > 0 && (
+                  <span className="text-xs bg-primary/10 text-primary font-semibold px-2 py-0.5 rounded-full">
+                    {g.openCount} abertos
+                  </span>
+                )}
+                <span className="text-xs text-muted-foreground">{g.count} total</span>
+              </div>
+            </button>
+
+            {/* Group rows */}
+            {isOpen && (
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/10">
+                    <TableHead className="w-28">Severidade</TableHead>
+                    <TableHead>Achado</TableHead>
+                    <TableHead className="w-20">Registro</TableHead>
+                    <TableHead className="w-16">CFOP</TableHead>
+                    <TableHead className="text-right w-28">EFD</TableHead>
+                    <TableHead className="text-right w-28">Referência</TableHead>
+                    <TableHead className="text-right w-28">Diferença</TableHead>
+                    <TableHead className="w-32">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {g.findings.map(f => {
+                    const fs = SEVERITY_CONFIG[f.severity] ?? { label: f.severity, variant: "outline" as const, color: "" };
+                    return (
+                      <TableRow key={f.id} className={f.status === "resolved" ? "opacity-50" : ""}>
+                        <TableCell>
+                          <Badge variant={fs.variant} className="text-xs">{fs.label}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <p className="text-sm font-medium">{f.title}</p>
+                          {f.description && (
+                            <p className="text-xs text-muted-foreground mt-0.5 max-w-md truncate">{f.description}</p>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{f.register_code ?? "—"}</TableCell>
+                        <TableCell className="font-mono text-xs">{f.cfop ?? "—"}</TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">
+                          {f.efd_value != null ? f.efd_value.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">
+                          {f.reference_value != null ? f.reference_value.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "—"}
+                        </TableCell>
+                        <TableCell className={`text-right text-xs tabular-nums font-medium ${f.difference_value && f.difference_value > 0 ? "text-red-600" : ""}`}>
+                          {f.difference_value != null ? f.difference_value.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {f.status === "open" ? (
+                            <div className="flex gap-1">
+                              <Button size="sm" variant="outline" className="h-6 text-xs px-2"
+                                onClick={() => updateStatus(f.id, "acknowledged")}>Ciente</Button>
+                              <Button size="sm" variant="ghost" className="h-6 text-xs px-2"
+                                onClick={() => updateStatus(f.id, "resolved")}>Resolver</Button>
+                            </div>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs">
+                              {f.status === "acknowledged" ? "Ciente" : "Resolvido"}
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ConferenciaTab({ period }: { period: FiscalPeriod }) {
   const [runs, setRuns] = useState<ValidationRun[]>([]);
   const [activeRun, setActiveRun] = useState<ValidationRun | null>(null);
@@ -1449,6 +1913,23 @@ function ConferenciaTab({ period }: { period: FiscalPeriod }) {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [filterSeverity, setFilterSeverity] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  function toggleGroup(code: string) {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      next.has(code) ? next.delete(code) : next.add(code);
+      return next;
+    });
+  }
+
+  function expandAll(codes: string[]) {
+    setExpandedGroups(new Set(codes));
+  }
+
+  function collapseAll() {
+    setExpandedGroups(new Set());
+  }
 
   useEffect(() => {
     api.get<ValidationRun[]>(`/api/v1/fiscal-periods/${period.id}/validation-runs`)
@@ -1499,6 +1980,8 @@ function ConferenciaTab({ period }: { period: FiscalPeriod }) {
   const filteredFindings = filterSeverity
     ? findings.filter(f => f.severity === filterSeverity)
     : findings;
+
+  const groups = groupFindingsByRule(filteredFindings);
 
   return (
     <div className="space-y-4">
@@ -1575,7 +2058,7 @@ function ConferenciaTab({ period }: { period: FiscalPeriod }) {
         </div>
       )}
 
-      {/* Tabela de achados */}
+      {/* Achados agrupados */}
       {loading ? (
         <p className="text-sm text-muted-foreground">Carregando...</p>
       ) : !activeRun ? (
@@ -1587,70 +2070,30 @@ function ConferenciaTab({ period }: { period: FiscalPeriod }) {
           {filterSeverity ? "Nenhum achado com este filtro." : "Nenhum achado encontrado."}
         </div>
       ) : (
-        <div className="border rounded-lg overflow-hidden">
-          {filterSeverity && (
-            <div className="px-4 py-2 bg-muted/30 border-b text-xs text-muted-foreground flex items-center justify-between">
-              <span>Filtrando por: <strong>{SEVERITY_CONFIG[filterSeverity]?.label}</strong> ({filteredFindings.length})</span>
-              <button onClick={() => setFilterSeverity("")} className="hover:text-foreground">Limpar filtro ×</button>
+        <div className="space-y-2">
+          {/* Barra de controle dos grupos */}
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              {groups.length} tipo(s) de verificação · {filteredFindings.length} achado(s)
+              {filterSeverity && <> · filtro: <strong>{SEVERITY_CONFIG[filterSeverity]?.label}</strong> <button onClick={() => setFilterSeverity("")} className="underline hover:text-foreground ml-1">limpar</button></>}
+            </span>
+            <div className="flex gap-2">
+              <button onClick={() => expandAll(groups.map(g => g.rule_code))} className="hover:text-foreground underline">
+                Expandir tudo
+              </button>
+              <span>·</span>
+              <button onClick={collapseAll} className="hover:text-foreground underline">
+                Recolher tudo
+              </button>
             </div>
-          )}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-28">Severidade</TableHead>
-                <TableHead>Achado</TableHead>
-                <TableHead className="w-20">Registro</TableHead>
-                <TableHead className="w-16">CFOP</TableHead>
-                <TableHead className="text-right w-28">EFD</TableHead>
-                <TableHead className="text-right w-28">Referência</TableHead>
-                <TableHead className="text-right w-28">Diferença</TableHead>
-                <TableHead className="w-32">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredFindings.map(f => {
-                const sev = SEVERITY_CONFIG[f.severity] ?? { label: f.severity, variant: "outline" as const, color: "" };
-                return (
-                  <TableRow key={f.id} className={f.status === "resolved" ? "opacity-50" : ""}>
-                    <TableCell>
-                      <Badge variant={sev.variant} className="text-xs">{sev.label}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-sm font-medium">{f.title}</p>
-                      {f.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5 max-w-md truncate">{f.description}</p>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{f.register_code ?? "—"}</TableCell>
-                    <TableCell className="font-mono text-xs">{f.cfop ?? "—"}</TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">
-                      {f.efd_value != null ? f.efd_value.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">
-                      {f.reference_value != null ? f.reference_value.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "—"}
-                    </TableCell>
-                    <TableCell className={`text-right text-xs tabular-nums font-medium ${f.difference_value && f.difference_value > 0 ? "text-red-600" : ""}`}>
-                      {f.difference_value != null ? f.difference_value.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {f.status === "open" ? (
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="outline" className="h-6 text-xs px-2"
-                            onClick={() => updateFindingStatus(f.id, "acknowledged")}>Ciente</Button>
-                          <Button size="sm" variant="ghost" className="h-6 text-xs px-2"
-                            onClick={() => updateFindingStatus(f.id, "resolved")}>Resolver</Button>
-                        </div>
-                      ) : (
-                        <Badge variant="secondary" className="text-xs">
-                          {f.status === "acknowledged" ? "Ciente" : "Resolvido"}
-                        </Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          </div>
+
+          <FindingGroups
+            groups={groups}
+            expandedGroups={expandedGroups}
+            toggleGroup={toggleGroup}
+            updateStatus={updateFindingStatus}
+          />
         </div>
       )}
 
@@ -1929,6 +2372,7 @@ export default function CompetenciaDetailPage() {
           <TabsTrigger value="referencia">Valores de Referência</TabsTrigger>
           <TabsTrigger value="conferencia">Conferências</TabsTrigger>
           <TabsTrigger value="nfe">NF-e XML</TabsTrigger>
+          <TabsTrigger value="relatorio">Relatório CFOP</TabsTrigger>
         </TabsList>
 
         <TabsContent value="efd" className="mt-4">
@@ -1949,6 +2393,10 @@ export default function CompetenciaDetailPage() {
 
         <TabsContent value="nfe" className="mt-4">
           <NfeTab period={period} />
+        </TabsContent>
+
+        <TabsContent value="relatorio" className="mt-4">
+          <RelatorioCfopTab period={period} />
         </TabsContent>
       </Tabs>
     </main>
